@@ -82,7 +82,7 @@ def _mock_client(routes: dict[str, dict], headers=None) -> HttpClient:
         return httpx.Response(404, json={"error": "no route", "path": request.url.path})
 
     return HttpClient("https://example.test", headers=headers or {},
-                      transport=httpx.MockTransport(handler))
+                      transport=httpx.MockTransport(handler), sleep=lambda *a: None)
 
 
 # --- football-data.org -----------------------------------------------------

@@ -70,6 +70,7 @@ class ApiFootballProvider(SportsDataProvider):
             Capability.FIXTURES,
             Capability.RESULTS,
             Capability.STANDINGS,
+            Capability.TEAMS,
         }
 
     def health_check(self) -> bool:
@@ -133,6 +134,16 @@ class ApiFootballProvider(SportsDataProvider):
             out.append(
                 MatchResult.from_fixture(fixture, Score(home=goals.get("home"), away=goals.get("away")))
             )
+        return out
+
+    def get_teams(self, *, competition_code: str, season: int) -> list[TeamRef]:
+        params = {"league": self._league_id(competition_code), "season": season}
+        resp = self._client.get_json("/teams", params).get("response", [])
+        out: list[TeamRef] = []
+        for entry in resp:
+            team = entry.get("team") or {}
+            if team.get("name"):
+                out.append(TeamRef(name=team["name"], provider_id=str(team.get("id"))))
         return out
 
     def get_standings(self, *, competition_code: str, season: int) -> list[Standing]:

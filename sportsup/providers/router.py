@@ -18,7 +18,7 @@ from .base import (
     ProviderUnavailableError,
     SportsDataProvider,
 )
-from .models import Fixture, MatchOdds, MatchResult, Standing
+from .models import Fixture, MatchOdds, MatchResult, Standing, TeamRef
 
 logger = logging.getLogger("sportsup.providers.router")
 
@@ -79,6 +79,13 @@ class ProviderRouter:
             Capability.STANDINGS,
             "standings",
             lambda p: p.get_standings(competition_code=competition_code, season=season),
+        )
+
+    def get_teams(self, *, competition_code: str, season: int) -> list[TeamRef]:
+        return self._try(
+            Capability.TEAMS,
+            "teams",
+            lambda p: p.get_teams(competition_code=competition_code, season=season),
         )
 
     def get_match_odds(

@@ -156,10 +156,15 @@ def cmd_fixtures(args, logger) -> int:
                 fx.home.name, fx.away.name, fx.status.value,
             )
             total += 1
-        if ef.unmatched_teams:
+        if ef.idle_teams:
+            logger.info(
+                "  watched teams with no match in the next %d days: %s",
+                config.fixture_sync_lookahead_days, ", ".join(ef.idle_teams),
+            )
+        if ef.unknown_teams:
             logger.warning(
-                "  watchlist names not seen in provider data (check spelling): %s",
-                ", ".join(ef.unmatched_teams),
+                "  watchlist names not found in the %s team list — check spelling: %s",
+                ef.event.name, ", ".join(ef.unknown_teams),
             )
     logger.info("-" * 60)
     logger.info("%d watched fixture(s) found.", total)

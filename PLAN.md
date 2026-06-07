@@ -63,6 +63,7 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
   - `football_data.py` — football-data.org adapter (fixtures/results/standings).
   - `api_football.py` — API-Football adapter (odds; also fixtures/results/standings as fallback).
   - `teams.py` — alias-based team resolution (Man United↔Manchester United, South Korea↔Korea Republic, Türkiye↔Turkey, …); reports unmatched watchlist names.
+  - `get_teams()` on the interface + both adapters: validates watchlist spellings against the full competition roster, so sync distinguishes a real typo (`unknown_teams`, warning) from a watched team that simply has no fixture in the window (`idle_teams`, neutral info).
   - `router.py` — capability routing + failover; `build_router(secrets)` factory (keyless → None).
 - `sportsup/sync.py` — `collect_watched_fixtures()` read path (fetch + watchlist filter).
 - CLI: `providers` (health probe) and `fixtures` (print upcoming watched fixtures in local tz).

@@ -55,7 +55,12 @@ class FootballDataProvider(SportsDataProvider):
         )
 
     def capabilities(self) -> set[Capability]:
-        return {Capability.FIXTURES, Capability.RESULTS, Capability.STANDINGS}
+        return {
+            Capability.FIXTURES,
+            Capability.RESULTS,
+            Capability.STANDINGS,
+            Capability.TEAMS,
+        }
 
     def health_check(self) -> bool:
         try:
@@ -107,6 +112,10 @@ class FootballDataProvider(SportsDataProvider):
             score = Score(home=full.get("home"), away=full.get("away"))
             results.append(MatchResult.from_fixture(fixture, score))
         return results
+
+    def get_teams(self, *, competition_code: str, season: int) -> list[TeamRef]:
+        data = self._client.get_json(f"/competitions/{competition_code}/teams")
+        return [_team(t) for t in data.get("teams", [])]
 
     def get_standings(self, *, competition_code: str, season: int) -> list[Standing]:
         data = self._client.get_json(f"/competitions/{competition_code}/standings")

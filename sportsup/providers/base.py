@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
 
-from .models import Fixture, MatchOdds, MatchResult, Standing
+from .models import Fixture, MatchOdds, MatchResult, Standing, TeamRef
 
 
 class Capability(str, Enum):
@@ -14,6 +14,7 @@ class Capability(str, Enum):
     RESULTS = "results"
     STANDINGS = "standings"
     ODDS = "odds"
+    TEAMS = "teams"
 
 
 class ProviderError(Exception):
@@ -66,6 +67,11 @@ class SportsDataProvider(ABC):
 
     def get_standings(self, *, competition_code: str, season: int) -> list[Standing]:
         raise NotSupportedError(f"{self.name} does not support standings")
+
+    def get_teams(self, *, competition_code: str, season: int) -> list[TeamRef]:
+        """Full roster of teams in a competition — used to validate watchlist spellings
+        independently of who happens to be playing in a given window."""
+        raise NotSupportedError(f"{self.name} does not support team listings")
 
     def get_match_odds(
         self,
