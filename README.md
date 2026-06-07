@@ -10,9 +10,10 @@ A configurable, single-user tool that tracks sporting events (e.g. **FIFA World 
 Events, teams, alert types, reminder lead-times, timezone, quiet hours, and upset sensitivity all live
 in editable config — adding a competition or team is a config change, not a code change.
 
-> **Status:** Phase 2 (data providers) complete — fixtures/results/standings/odds behind a
-> failover provider interface. Alert engine and WhatsApp delivery land in later phases.
-> See [`PLAN.md`](PLAN.md). Nothing is sent yet; `dry_run` is on by default.
+> **Status:** Phase 4 complete — data providers, alert engine (reminders + upset detection +
+> dedup), and WhatsApp delivery (Meta Cloud, with dry-run console mode). Remaining: the
+> scheduling runtime (Phase 5) and hardening/docs (Phase 6). See [`PLAN.md`](PLAN.md).
+> `dry_run` is on by default, so nothing is sent until you opt in.
 
 ## Quick start (WSL2)
 
@@ -49,6 +50,9 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup validate` | Validate config and initialize the SQLite state store |
 | `python -m sportsup providers` | Probe data-provider connectivity/auth (needs API keys in `.env`) |
 | `python -m sportsup fixtures` | Fetch & print upcoming fixtures for watched teams in your timezone |
+| `python -m sportsup alerts` | Dry-run preview of scheduled reminders + result/upset alerts |
+| `python -m sportsup whatsapp-test [--live]` | Preview message formatting; `--live` sends a real test WhatsApp |
+| `python -m sportsup notify` | Deliver due alerts via the configured sender (console in dry-run) |
 | `python -m sportsup run` | Boot everything (live scheduler arrives in Phase 5) |
 
 `providers` and `fixtures` need at least `FOOTBALL_DATA_API_KEY` in `.env`

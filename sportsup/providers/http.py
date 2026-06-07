@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -16,6 +17,12 @@ import httpx
 from .base import ProviderUnavailableError, RateLimitError
 
 logger = logging.getLogger("sportsup.http")
+
+
+@dataclass
+class HttpResponse:
+    status_code: int
+    data: Any
 
 
 class HttpClient:
@@ -40,11 +47,15 @@ class HttpClient:
         self._backoff_base = backoff_base
         self._sleep = sleep
 
-    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
+    def request(
+        self, method: str, path: str, *, params: dict[str, Any] | None = None, json: Any = None
+    ) -> HttpResponse:
+        """Issue a request, retrying on network errors, 429, and 5xx. 4xx and 2xx are
+        returned to the caller (so POST callers can inspect API error bodies)."""
         last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             try:
-                resp = self._client.get(path, params=params)
+                resp = self._client.request(method, path, params=params, json=json)
             except httpx.HTTPError as exc:  # network/DNS/timeout
                 last_exc = ProviderUnavailableError(f"request to {path} failed: {exc}")
                 self._backoff(attempt)
@@ -52,27 +63,34 @@ class HttpClient:
 
             if resp.status_code == 429:
                 retry_after = _retry_after_seconds(resp)
-                last_exc = RateLimitError(
-                    f"rate limited on {path}", retry_after=retry_after
-                )
+                last_exc = RateLimitError(f"rate limited on {path}", retry_after=retry_after)
                 self._backoff(attempt, retry_after)
                 continue
-            if resp.status_code in (401, 403):
-                raise ProviderUnavailableError(
-                    f"auth failed ({resp.status_code}) on {path} — check API key"
-                )
             if resp.status_code >= 500:
-                last_exc = ProviderUnavailableError(
-                    f"server error {resp.status_code} on {path}"
-                )
+                last_exc = ProviderUnavailableError(f"server error {resp.status_code} on {path}")
                 self._backoff(attempt)
                 continue
 
-            resp.raise_for_status()
-            return resp.json()
+            try:
+                data = resp.json()
+            except ValueError:
+                data = None
+            return HttpResponse(resp.status_code, data)
 
         assert last_exc is not None
         raise last_exc
+
+    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        r = self.request("GET", path, params=params)
+        if r.status_code in (401, 403):
+            raise ProviderUnavailableError(f"auth failed ({r.status_code}) on {path} — check API key")
+        if r.status_code >= 400:
+            raise ProviderUnavailableError(f"HTTP {r.status_code} on {path}")
+        return r.data
+
+    def post_json(self, path: str, json: Any) -> HttpResponse:
+        """POST returning status + parsed body without raising on 4xx."""
+        return self.request("POST", path, json=json)
 
     def _backoff(self, attempt: int, retry_after: float | None = None) -> None:
         if attempt >= self._max_retries - 1:

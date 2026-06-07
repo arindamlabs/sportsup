@@ -21,8 +21,8 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - [x] **Phase 0 — Research & decisions.** Decision doc delivered; choices locked above.
 - [x] **Phase 1 — Scaffold.** Config schema, state/dedup store, secrets handling, Docker, runnable skeleton.
 - [x] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.
-- [ ] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.  ← _in review_
-- [ ] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.
+- [x] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.
+- [ ] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.  ← _in review_
 - [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.
 - [ ] **Phase 6 — Hardening.** Retries, backoff, failover, logging + status view, tests, docs (README + runbook + deploy guide).
 
@@ -100,3 +100,33 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 **How to verify (you)**
 - `python -m sportsup alerts` → scheduled `1d`/`1h` reminders for your World Cup teams in Pacific time (verified: 30 reminders), and any recent upsets once matches start.
 - `python -m sportsup alerts --results-days 14` → widen the finished-match scan window.
+
+## Phase 4 — deliverables & acceptance
+**Deliverables**
+- `sportsup/delivery/` package:
+  - `base.py` — `WhatsAppSender` ABC + `OutboundMessage` (text or template) + `SendResult`.
+  - `console.py` — `ConsoleSender` (dry-run: prints instead of sending).
+  - `meta_cloud.py` — `MetaCloudSender` (Graph API `/{phone_number_id}/messages`; text + template; surfaces error codes incl. 131047 out-of-window).
+  - `formatting.py` — `format_alert()` → clean WhatsApp text (emoji, *bold*, local-tz kickoff, score/upset framing).
+  - `factory.py` — `build_sender()`: `dry_run` (env `SPORTSUP_DRY_RUN` overrides config) forces console; else builds the configured provider if creds present.
+- `providers/http.py` — generalized to support POST (`post_json`) with the same retry/backoff.
+- CLI: `whatsapp-test [--live]` (formatting previews; `--live` sends a real `hello_world` template) and `notify` (engine→formatter→sender; console in dry-run; marks dedup only on real delivery).
+- `tests/test_delivery.py` — 10 tests (formatting, console, Meta success/error/template payload, factory selection).
+
+**Acceptance criteria**
+- Alerts render as readable WhatsApp messages in the configured timezone.
+- Dry-run (default) never sends a real message; `notify` in dry-run marks nothing sent (repeatable).
+- Meta sender returns a clear `SendResult` on success (message id) and failure (error + code).
+- Provider is swappable purely via `delivery.provider` + factory.
+- 39/39 tests pass.
+
+**How to verify (you)**
+- `python -m sportsup whatsapp-test` → see the three message styles (reminder/final/upset) printed.
+- `python -m sportsup whatsapp-test --live` → receive a real "Hello World" on your WhatsApp (proves delivery end-to-end).
+- `SPORTSUP_DRY_RUN=false python -m sportsup notify` → would deliver any currently-due alerts for real (none until matches start; reminders fire on schedule in Phase 5).
+
+> **WhatsApp 24-hour-window note:** free-form text alerts deliver only inside WhatsApp's 24h
+> customer-service window (i.e. within 24h of you messaging the bot). Outside it, Meta requires a
+> pre-approved **utility template** — surfaced as error 131047. For reliable always-on alerts we'll
+> add a simple approved utility template in Phase 6 (runbook); the test number's `hello_world`
+> template already works any time for the connectivity check.

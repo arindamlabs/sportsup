@@ -19,9 +19,11 @@ from pathlib import Path
 
 from . import __version__
 from .alerts import AlertEngine
+from .alerts.models import Alert, AlertType
 from .config import AppConfig, load_config
+from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert
 from .logging_setup import setup_logging
-from .providers import ProviderError
+from .providers import Fixture, MatchStatus, ProviderError, TeamRef
 from .providers.router import build_router
 from .providers.teams import TeamResolver
 from .settings import Secrets
@@ -174,42 +176,22 @@ def cmd_fixtures(args, logger) -> int:
     return 0
 
 
-def cmd_alerts(args, logger) -> int:
-    """Dry-run preview of the alert engine: scheduled reminders + any result/upset alerts.
-    Does NOT mark anything as sent (that happens at delivery time in Phase 4/5)."""
-    config = load_config(args.config)
-    secrets = Secrets()
-    router = _build_router_or_warn(secrets, config, logger)
-    if router is None:
-        return 2
-    store = StateStore(args.db)
-    engine = AlertEngine(config, store)
-    now = datetime.now(timezone.utc)
-
-    # 1) Upcoming-fixture reminders (planned off synced fixtures).
-    logger.info("=" * 60)
-    logger.info("SCHEDULED REMINDERS (times in %s)", config.timezone)
-    logger.info("=" * 60)
-    reminder_count = 0
+def _all_reminders(config, router, engine, now) -> list[Alert]:
+    """Every future reminder for watched fixtures (unsent), across all enabled events."""
+    out: list[Alert] = []
     fixtures_by_event = {ef.event.id: ef for ef in collect_watched_fixtures(config, router, now=now)}
     for ev in config.enabled_events:
         ef = fixtures_by_event.get(ev.id)
         if ef is None or ef.error:
             continue
-        reminders = engine.unsent(engine.plan_reminders(ev, ef.fixtures, now=now))
-        for a in reminders:
-            local = a.scheduled_for.astimezone(config.tzinfo).strftime("%a %d %b %H:%M %Z")
-            logger.info("  %s  %s", local, a.summary)
-            reminder_count += 1
-    if reminder_count == 0:
-        logger.info("  (none scheduled in the current window)")
+        out.extend(engine.unsent(engine.plan_reminders(ev, ef.fixtures, now=now)))
+    return out
 
-    # 2) Recent results -> final-score / shock alerts.
-    logger.info("=" * 60)
-    logger.info("RESULT ALERTS (finished matches in the last %d days)", args.results_days)
-    logger.info("=" * 60)
-    result_count = 0
-    since = now - timedelta(days=args.results_days)
+
+def _all_result_alerts(config, router, engine, now, results_days, logger) -> list[Alert]:
+    """Final-score / shock alerts (unsent) for watched matches finished in the window."""
+    out: list[Alert] = []
+    since = now - timedelta(days=results_days)
     for ev in config.enabled_events:
         resolver = TeamResolver(ev.teams)
         try:
@@ -218,7 +200,7 @@ def cmd_alerts(args, logger) -> int:
                 date_from=since, date_to=now,
             )
         except ProviderError as exc:
-            logger.warning("  %s: results unavailable (%s)", ev.name, exc)
+            logger.warning("%s: results unavailable (%s)", ev.name, exc)
             continue
         watched = [
             r for r in results
@@ -232,28 +214,156 @@ def cmd_alerts(args, logger) -> int:
             except ProviderError:
                 standings = None
 
-        def odds_lookup(r):
+        def odds_lookup(r, _ev=ev):
             try:
                 return router.get_match_odds(
-                    competition_code=ev.competition_code, season=ev.season,
+                    competition_code=_ev.competition_code, season=_ev.season,
                     home_team=r.fixture.home.name, away_team=r.fixture.away.name,
                     kickoff=r.fixture.utc_kickoff,
                 )
             except ProviderError:
                 return None
 
-        alerts = engine.unsent(
+        out.extend(engine.unsent(
             engine.evaluate_results(ev, watched, odds_lookup=odds_lookup, standings=standings)
-        )
-        for a in alerts:
-            logger.info("  %s", a.summary)
-            result_count += 1
-    if result_count == 0:
+        ))
+    return out
+
+
+def cmd_alerts(args, logger) -> int:
+    """Dry-run preview of the alert engine: scheduled reminders + any result/upset alerts.
+    Does NOT mark anything as sent (that happens at delivery time via `notify`)."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+    store = StateStore(args.db)
+    engine = AlertEngine(config, store)
+    now = datetime.now(timezone.utc)
+
+    logger.info("=" * 60)
+    logger.info("SCHEDULED REMINDERS (times in %s)", config.timezone)
+    logger.info("=" * 60)
+    reminders = sorted(_all_reminders(config, router, engine, now), key=lambda a: a.scheduled_for)
+    for a in reminders:
+        local = a.scheduled_for.astimezone(config.tzinfo).strftime("%a %d %b %H:%M %Z")
+        logger.info("  %s  %s", local, a.summary)
+    if not reminders:
+        logger.info("  (none scheduled in the current window)")
+
+    logger.info("=" * 60)
+    logger.info("RESULT ALERTS (finished matches in the last %d days)", args.results_days)
+    logger.info("=" * 60)
+    results = _all_result_alerts(config, router, engine, now, args.results_days, logger)
+    for a in results:
+        logger.info("  %s", a.summary)
+    if not results:
         logger.info("  (no finished watched matches / no upsets in window)")
 
     logger.info("=" * 60)
     logger.info("Dry-run: %d reminder(s) + %d result alert(s). Nothing sent or marked.",
-                reminder_count, result_count)
+                len(reminders), len(results))
+    store.close()
+    return 0
+
+
+def _sample_alerts(now) -> list[Alert]:
+    """Synthetic alerts (not from live data) to preview message formatting."""
+    base = dict(provider="sample", competition_code="WC", season=2026)
+    fx_up = Fixture(**base, provider_fixture_id="0", utc_kickoff=now + timedelta(days=1),
+                    status=MatchStatus.TIMED, home=TeamRef(name="Brazil"), away=TeamRef(name="Morocco"))
+    fx_done = Fixture(**base, provider_fixture_id="1", utc_kickoff=now - timedelta(hours=2),
+                      status=MatchStatus.FINISHED, home=TeamRef(name="Saudi Arabia"), away=TeamRef(name="Argentina"))
+    ctx = {"competition": "FIFA World Cup 2026"}
+    return [
+        Alert(AlertType.FIXTURE_REMINDER, "world-cup-2026", "sample:rem", fx_up,
+              summary="", lead_label="1d", context={**ctx}),
+        Alert(AlertType.FINAL_SCORE, "world-cup-2026", "sample:final", fx_done,
+              summary="", context={**ctx, "home_score": 2, "away_score": 1}),
+        Alert(AlertType.SHOCK_RESULT, "world-cup-2026", "sample:shock", fx_done,
+              summary="", context={**ctx, "home_score": 2, "away_score": 1,
+                                   "signal_used": "odds",
+                                   "reason": "Saudi Arabia won with only ~6% pre-match implied chance (vs Argentina ~83%)"}),
+    ]
+
+
+def cmd_whatsapp_test(args, logger) -> int:
+    """Preview formatted messages (always) and, with --live, send a real 'hello_world'
+    template to your number to confirm end-to-end delivery."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    recipient = secrets.whatsapp_recipient
+    if not recipient:
+        logger.error("Set WHATSAPP_RECIPIENT (your number in E.164) in .env.")
+        return 2
+
+    tz = config.tzinfo
+    console = ConsoleSender()
+    logger.info("Message formatting previews (these are what alerts will look like):")
+    for a in _sample_alerts(datetime.now(timezone.utc)):
+        console.send(OutboundMessage(recipient=recipient, text=format_alert(a, tz), dedup_key=a.dedup_key))
+
+    if not args.live:
+        logger.info("")
+        logger.info("Add --live to send a real 'hello_world' template to %s and confirm delivery.", recipient)
+        return 0
+
+    if not (secrets.whatsapp_access_token and secrets.whatsapp_phone_number_id):
+        logger.error("Live send needs WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID in .env.")
+        return 2
+
+    from .delivery.meta_cloud import MetaCloudSender
+    sender = MetaCloudSender(secrets.whatsapp_access_token, secrets.whatsapp_phone_number_id)
+    logger.info("Sending live 'hello_world' template to %s ...", recipient)
+    res = sender.send(OutboundMessage(recipient=recipient, template_name="hello_world", template_lang="en_US"))
+    if res.ok:
+        logger.info("LIVE SEND OK (message id %s). Check WhatsApp on %s — you should see 'Hello World'.",
+                    res.provider_message_id, recipient)
+        return 0
+    logger.error("LIVE SEND FAILED: %s (code %s)", res.error, res.error_code)
+    return 1
+
+
+def cmd_notify(args, logger) -> int:
+    """Run the engine once and deliver due alerts through the configured sender.
+    Console (dry-run) by default; this is what Phase 5's scheduler will call on a loop."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+    recipient = secrets.whatsapp_recipient
+    if not recipient:
+        logger.error("Set WHATSAPP_RECIPIENT in .env.")
+        return 2
+    sender = build_sender(config, secrets)
+    if sender is None:
+        return 2
+
+    store = StateStore(args.db)
+    engine = AlertEngine(config, store)
+    now = datetime.now(timezone.utc)
+    tz = config.tzinfo
+
+    # Reminders whose lead time has arrived, plus result/shock alerts for finished matches.
+    due = [a for a in _all_reminders(config, router, engine, now) if a.scheduled_for <= now]
+    due += _all_result_alerts(config, router, engine, now, args.results_days, logger)
+
+    sent = failed = 0
+    for a in due:
+        res = sender.send(OutboundMessage(recipient=recipient, text=format_alert(a, tz), dedup_key=a.dedup_key))
+        if res.ok:
+            sent += 1
+            # Only persist dedup on a *real* delivery so dry-runs stay repeatable.
+            if res.provider != "console":
+                engine.mark_sent(a)
+        else:
+            failed += 1
+            logger.error("send failed for %s: %s (code %s)", a.dedup_key, res.error, res.error_code)
+
+    note = "dry-run: nothing marked sent." if sender.name == "console" else ""
+    logger.info("notify via %s: %d due, %d sent, %d failed. %s", sender.name, len(due), sent, failed, note)
     store.close()
     return 0
 
@@ -290,6 +400,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fixtures", parents=[common], help="fetch upcoming fixtures for watched teams")
     p_alerts = sub.add_parser("alerts", parents=[common], help="dry-run preview of reminders + result alerts")
     p_alerts.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
+    p_wa = sub.add_parser("whatsapp-test", parents=[common], help="preview message formatting; --live sends a real hello_world")
+    p_wa.add_argument("--live", action="store_true", help="actually send a real test message via Meta Cloud API")
+    p_notify = sub.add_parser("notify", parents=[common], help="deliver due alerts via the configured sender (console if dry-run)")
+    p_notify.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
     sub.add_parser("run", parents=[common], help="boot everything (scheduler arrives in Phase 5)")
     return parser
 
@@ -305,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
         "providers": cmd_providers,
         "fixtures": cmd_fixtures,
         "alerts": cmd_alerts,
+        "whatsapp-test": cmd_whatsapp_test,
+        "notify": cmd_notify,
         "run": cmd_run,
     }
     try:
