@@ -20,8 +20,8 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 ## Phases (stop for review at each boundary)
 - [x] **Phase 0 — Research & decisions.** Decision doc delivered; choices locked above.
 - [x] **Phase 1 — Scaffold.** Config schema, state/dedup store, secrets handling, Docker, runnable skeleton.
-- [ ] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.  ← _in review_
-- [ ] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.
+- [x] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.
+- [ ] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.  ← _in review_
 - [ ] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.
 - [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.
 - [ ] **Phase 6 — Hardening.** Retries, backoff, failover, logging + status view, tests, docs (README + runbook + deploy guide).
@@ -80,3 +80,23 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - `python -m sportsup providers` → both providers report OK (or just football-data.org if only that key is set).
 - `python -m sportsup fixtures` → upcoming matches for your watched teams, kickoff in Pacific time. (World Cup 2026 fixtures are already published; EPL 2026-27 appears once the season is scheduled.)
 - Without keys, both commands print a clear "set FOOTBALL_DATA_API_KEY" message and exit 2.
+
+## Phase 3 — deliverables & acceptance
+**Deliverables**
+- `sportsup/alerts/` package:
+  - `models.py` — `AlertType` (fixture_reminder / final_score / shock_result) + `Alert` (dedup_key, fixture, summary, scheduled_for, context).
+  - `shock.py` — explainable `evaluate_upset()` → `UpsetEvaluation(is_upset, upset_index 0..1, signal_used, reason)`. Tries `signal_priority` order: odds (implied win-prob ≤ 1−sensitivity & below opponent) → standings (position gap ≥ min_position_gap) → form (recent-points gap over form_window). Draw/no-data → not an upset.
+  - `engine.py` — `AlertEngine`: `plan_reminders()` (one per upcoming fixture × lead-time still in the future), `evaluate_results()` (final-score if enabled + shock if upset), `unsent()`/`mark_sent()` dedup against the SQLite store.
+- CLI `alerts` — dry-run preview of scheduled reminders + result/upset alerts (does not mark sent).
+- `tests/test_alerts.py` — 9 tests (odds/standings/form upset paths, draw, reminder windowing, results + dedup).
+
+**Acceptance criteria**
+- Reminders generated for each watched fixture at every configured lead-time, future-only, sorted; stable dedup keys.
+- Shock heuristic flags genuine underdog wins and rejects favourite-wins/draws; severity + reason explained.
+- Final-score alerts only when enabled; result alerts only for finished matches.
+- Dedup is exactly-once and survives restarts (`mark_sent` idempotent).
+- 29/29 tests pass.
+
+**How to verify (you)**
+- `python -m sportsup alerts` → scheduled `1d`/`1h` reminders for your World Cup teams in Pacific time (verified: 30 reminders), and any recent upsets once matches start.
+- `python -m sportsup alerts --results-days 14` → widen the finished-match scan window.

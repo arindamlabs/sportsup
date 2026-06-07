@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import __version__
+from .alerts import AlertEngine
 from .config import AppConfig, load_config
 from .logging_setup import setup_logging
+from .providers import ProviderError
 from .providers.router import build_router
+from .providers.teams import TeamResolver
 from .settings import Secrets
 from .state import StateStore
 from .sync import collect_watched_fixtures
@@ -171,6 +174,90 @@ def cmd_fixtures(args, logger) -> int:
     return 0
 
 
+def cmd_alerts(args, logger) -> int:
+    """Dry-run preview of the alert engine: scheduled reminders + any result/upset alerts.
+    Does NOT mark anything as sent (that happens at delivery time in Phase 4/5)."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+    store = StateStore(args.db)
+    engine = AlertEngine(config, store)
+    now = datetime.now(timezone.utc)
+
+    # 1) Upcoming-fixture reminders (planned off synced fixtures).
+    logger.info("=" * 60)
+    logger.info("SCHEDULED REMINDERS (times in %s)", config.timezone)
+    logger.info("=" * 60)
+    reminder_count = 0
+    fixtures_by_event = {ef.event.id: ef for ef in collect_watched_fixtures(config, router, now=now)}
+    for ev in config.enabled_events:
+        ef = fixtures_by_event.get(ev.id)
+        if ef is None or ef.error:
+            continue
+        reminders = engine.unsent(engine.plan_reminders(ev, ef.fixtures, now=now))
+        for a in reminders:
+            local = a.scheduled_for.astimezone(config.tzinfo).strftime("%a %d %b %H:%M %Z")
+            logger.info("  %s  %s", local, a.summary)
+            reminder_count += 1
+    if reminder_count == 0:
+        logger.info("  (none scheduled in the current window)")
+
+    # 2) Recent results -> final-score / shock alerts.
+    logger.info("=" * 60)
+    logger.info("RESULT ALERTS (finished matches in the last %d days)", args.results_days)
+    logger.info("=" * 60)
+    result_count = 0
+    since = now - timedelta(days=args.results_days)
+    for ev in config.enabled_events:
+        resolver = TeamResolver(ev.teams)
+        try:
+            results = router.get_results(
+                competition_code=ev.competition_code, season=ev.season,
+                date_from=since, date_to=now,
+            )
+        except ProviderError as exc:
+            logger.warning("  %s: results unavailable (%s)", ev.name, exc)
+            continue
+        watched = [
+            r for r in results
+            if not ev.teams or resolver.is_watched(r.fixture.home.name)
+            or resolver.is_watched(r.fixture.away.name)
+        ]
+        standings = None
+        if ev.alerts.shock_result and watched:
+            try:
+                standings = router.get_standings(competition_code=ev.competition_code, season=ev.season)
+            except ProviderError:
+                standings = None
+
+        def odds_lookup(r):
+            try:
+                return router.get_match_odds(
+                    competition_code=ev.competition_code, season=ev.season,
+                    home_team=r.fixture.home.name, away_team=r.fixture.away.name,
+                    kickoff=r.fixture.utc_kickoff,
+                )
+            except ProviderError:
+                return None
+
+        alerts = engine.unsent(
+            engine.evaluate_results(ev, watched, odds_lookup=odds_lookup, standings=standings)
+        )
+        for a in alerts:
+            logger.info("  %s", a.summary)
+            result_count += 1
+    if result_count == 0:
+        logger.info("  (no finished watched matches / no upsets in window)")
+
+    logger.info("=" * 60)
+    logger.info("Dry-run: %d reminder(s) + %d result alert(s). Nothing sent or marked.",
+                reminder_count, result_count)
+    store.close()
+    return 0
+
+
 def cmd_run(args, logger) -> int:
     config = load_config(args.config)
     secrets = Secrets()
@@ -201,6 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("plan", parents=[common], help="print what would be tracked")
     sub.add_parser("providers", parents=[common], help="probe data-provider health")
     sub.add_parser("fixtures", parents=[common], help="fetch upcoming fixtures for watched teams")
+    p_alerts = sub.add_parser("alerts", parents=[common], help="dry-run preview of reminders + result alerts")
+    p_alerts.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
     sub.add_parser("run", parents=[common], help="boot everything (scheduler arrives in Phase 5)")
     return parser
 
@@ -215,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         "plan": cmd_plan,
         "providers": cmd_providers,
         "fixtures": cmd_fixtures,
+        "alerts": cmd_alerts,
         "run": cmd_run,
     }
     try:
