@@ -1,0 +1,17 @@
+# Dev on WSL2, deploy unchanged to an always-on host (e.g. Oracle Always-Free ARM VM).
+services:
+  sportsup:
+    build: .
+    image: sportsup:0.1.0
+    container_name: sportsup
+    env_file:
+      - .env
+    volumes:
+      # Live-mount config so edits don't require a rebuild.
+      - ./config.yaml:/app/config.yaml:ro
+      # Persist state + logs across restarts/redeploys.
+      - ./data:/app/data
+      - ./logs:/app/logs
+    # Phase 1: print the plan and exit. Switch to ["run"] once Phase 5 lands.
+    command: ["plan"]
+    restart: "no"

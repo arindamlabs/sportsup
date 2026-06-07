@@ -1,0 +1,53 @@
+# SportsUp configuration — copy to `config.yaml` and edit freely.
+# Adding/removing events, teams, or alert types is a config change; no code edits needed.
+# Secrets (API keys, WhatsApp tokens) do NOT go here — they live in `.env`.
+
+# IANA timezone name. All times in alerts are rendered in this zone (DST handled automatically).
+timezone: America/Los_Angeles
+
+# How many days ahead the daily fixture sync looks when scheduling reminders.
+fixture_sync_lookahead_days: 10
+
+quiet_hours:
+  enabled: true
+  start: "22:00"        # HH:MM, local time
+  end: "07:00"
+  behavior: defer       # defer | suppress  (what to do with an alert landing in quiet hours)
+
+reminders:
+  lead_times: ["1d", "1h"]   # e.g. day-before + kickoff-soon. Forms: '1d', '2h', '30m'.
+
+shock_detection:
+  sensitivity: 0.65          # 0..1; higher = only flag bigger upsets (winner had <=35% implied chance)
+  min_position_gap: 8        # standings fallback: min league-table gap for an upset
+  form_window: 5             # recent matches used for the form tiebreaker
+  signal_priority: ["odds", "standings", "form"]
+
+delivery:
+  provider: meta_cloud       # meta_cloud | twilio | console
+  dry_run: true              # true = print messages instead of sending (env SPORTSUP_DRY_RUN overrides)
+
+events:
+  - id: world-cup-2026
+    name: FIFA World Cup 2026
+    enabled: true
+    competition_code: WC        # football-data.org code
+    api_football_league: 1      # API-Football league id (for odds)
+    season: 2026
+    teams: [Brazil, France, England]
+    alerts:
+      upcoming_fixtures: true
+      shock_result: true
+      final_scores: false
+
+  - id: epl-2026-27
+    name: English Premier League 2026-27
+    enabled: true
+    competition_code: PL
+    api_football_league: 39
+    season: 2026
+    teams: [Arsenal, Liverpool]
+    alerts:
+      upcoming_fixtures: true
+      shock_result: true
+      final_scores: false
