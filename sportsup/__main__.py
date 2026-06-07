@@ -1,8 +1,10 @@
 """SportsUp entrypoint / CLI.
 
-Phase 1 commands:
+Commands:
   validate  — load and validate config + boot the state store, then exit
   plan      — print what *would* be tracked (events, teams, alert toggles, schedule)
+  providers — probe configured data providers (connectivity/auth health)
+  fixtures  — fetch & print upcoming fixtures for watched teams (read-only)
   run       — boot everything; the live scheduler/poller arrives in Phase 5
 
 Run with:  python -m sportsup <command> [--config config.yaml]
@@ -14,13 +16,14 @@ import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import AppConfig, load_config
 from .logging_setup import setup_logging
+from .providers.router import build_router
 from .settings import Secrets
 from .state import StateStore
+from .sync import collect_watched_fixtures
 
 DEFAULT_CONFIG = "config.yaml"
 DEFAULT_DB = "data/sportsup.sqlite"
@@ -95,6 +98,74 @@ def cmd_plan(args, logger) -> int:
     return 0
 
 
+def _build_router_or_warn(secrets: Secrets, config: AppConfig, logger):
+    league_map = {
+        e.competition_code: e.api_football_league
+        for e in config.events
+        if e.api_football_league is not None
+    }
+    router = build_router(secrets, league_map=league_map or None)
+    if router is None:
+        logger.error(
+            "No data-provider credentials found. Set FOOTBALL_DATA_API_KEY (and "
+            "optionally API_FOOTBALL_KEY) in .env. See .env.example."
+        )
+    return router
+
+
+def cmd_providers(args, logger) -> int:
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+    logger.info("Probing %d provider(s)...", len(router.providers))
+    ok = True
+    for name, healthy in router.health().items():
+        logger.info("  %-20s %s", name, "OK" if healthy else "UNREACHABLE / auth failed")
+        ok = ok and healthy
+    return 0 if ok else 1
+
+
+def cmd_fixtures(args, logger) -> int:
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+
+    tz = config.tzinfo
+    logger.info(
+        "Upcoming fixtures for watched teams (next %d days, times in %s):",
+        config.fixture_sync_lookahead_days, config.timezone,
+    )
+    total = 0
+    for ef in collect_watched_fixtures(config, router):
+        logger.info("-" * 60)
+        logger.info("%s", ef.event.name)
+        if ef.error:
+            logger.error("  fetch failed: %s", ef.error)
+            continue
+        if not ef.fixtures:
+            logger.info("  (no upcoming fixtures for watched teams in window)")
+        for fx in ef.fixtures:
+            local = fx.utc_kickoff.astimezone(tz)
+            logger.info(
+                "  %s  %s vs %s  [%s]",
+                local.strftime("%a %d %b %H:%M %Z"),
+                fx.home.name, fx.away.name, fx.status.value,
+            )
+            total += 1
+        if ef.unmatched_teams:
+            logger.warning(
+                "  watchlist names not seen in provider data (check spelling): %s",
+                ", ".join(ef.unmatched_teams),
+            )
+    logger.info("-" * 60)
+    logger.info("%d watched fixture(s) found.", total)
+    return 0
+
+
 def cmd_run(args, logger) -> int:
     config = load_config(args.config)
     secrets = Secrets()
@@ -123,6 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate", parents=[common], help="validate config + state store, then exit")
     sub.add_parser("plan", parents=[common], help="print what would be tracked")
+    sub.add_parser("providers", parents=[common], help="probe data-provider health")
+    sub.add_parser("fixtures", parents=[common], help="fetch upcoming fixtures for watched teams")
     sub.add_parser("run", parents=[common], help="boot everything (scheduler arrives in Phase 5)")
     return parser
 
@@ -132,7 +205,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logger = setup_logging(args.log_level)
 
-    handlers = {"validate": cmd_validate, "plan": cmd_plan, "run": cmd_run}
+    handlers = {
+        "validate": cmd_validate,
+        "plan": cmd_plan,
+        "providers": cmd_providers,
+        "fixtures": cmd_fixtures,
+        "run": cmd_run,
+    }
     try:
         return handlers[args.command](args, logger)
     except (FileNotFoundError, ValueError) as exc:

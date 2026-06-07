@@ -19,8 +19,8 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 
 ## Phases (stop for review at each boundary)
 - [x] **Phase 0 — Research & decisions.** Decision doc delivered; choices locked above.
-- [ ] **Phase 1 — Scaffold.** Config schema, state/dedup store, secrets handling, Docker, runnable skeleton.  ← _in review_
-- [ ] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.
+- [x] **Phase 1 — Scaffold.** Config schema, state/dedup store, secrets handling, Docker, runnable skeleton.
+- [ ] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.  ← _in review_
 - [ ] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.
 - [ ] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.
 - [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.
@@ -53,3 +53,29 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - `pip install -r requirements.txt && python -m sportsup plan` → see your 18 WC + 5 EPL teams.
 - Toggle an event `enabled: false` in `config.yaml`, re-run `plan` → it drops out.
 - Break something (e.g. `timezone: Mars/Phobos`) → clear validation error, no crash.
+
+## Phase 2 — deliverables & acceptance
+**Deliverables**
+- `sportsup/providers/` package:
+  - `models.py` — normalized `TeamRef`/`Fixture`/`MatchResult`/`Standing`/`MatchOdds` (vendor-agnostic).
+  - `base.py` — `SportsDataProvider` ABC, `Capability` enum, error taxonomy (`ProviderUnavailableError`/`RateLimitError`/`NotSupportedError`).
+  - `http.py` — shared httpx client with bounded retry/backoff (Retry-After aware); injectable transport for offline tests.
+  - `football_data.py` — football-data.org adapter (fixtures/results/standings).
+  - `api_football.py` — API-Football adapter (odds; also fixtures/results/standings as fallback).
+  - `teams.py` — alias-based team resolution (Man United↔Manchester United, South Korea↔Korea Republic, Türkiye↔Turkey, …); reports unmatched watchlist names.
+  - `router.py` — capability routing + failover; `build_router(secrets)` factory (keyless → None).
+- `sportsup/sync.py` — `collect_watched_fixtures()` read path (fetch + watchlist filter).
+- CLI: `providers` (health probe) and `fixtures` (print upcoming watched fixtures in local tz).
+- `tests/test_providers.py` — 8 offline tests (parsing, odds math, aliases, failover).
+
+**Acceptance criteria**
+- Both adapters parse fixtures/results/standings (+odds for API-Football) into normalized models — verified offline via `httpx.MockTransport`.
+- Router fails over to the next capable provider on outage; odds requests only hit a provider that supports them.
+- Team resolver matches your watchlist shorthand to provider canonical names and surfaces unmatched spellings.
+- `fixtures`/`providers` exit cleanly with a clear message when no API keys are set.
+- 18/18 tests pass.
+
+**How to verify (you)** — needs a free [football-data.org token](https://www.football-data.org/client/register) in `.env`:
+- `python -m sportsup providers` → both providers report OK (or just football-data.org if only that key is set).
+- `python -m sportsup fixtures` → upcoming matches for your watched teams, kickoff in Pacific time. (World Cup 2026 fixtures are already published; EPL 2026-27 appears once the season is scheduled.)
+- Without keys, both commands print a clear "set FOOTBALL_DATA_API_KEY" message and exit 2.

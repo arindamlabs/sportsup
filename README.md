@@ -10,8 +10,9 @@ A configurable, single-user tool that tracks sporting events (e.g. **FIFA World 
 Events, teams, alert types, reminder lead-times, timezone, quiet hours, and upset sensitivity all live
 in editable config — adding a competition or team is a config change, not a code change.
 
-> **Status:** Phase 1 (scaffold) complete. Data fetching, alerts, and WhatsApp delivery land in later
-> phases. See [`PLAN.md`](PLAN.md). Nothing is sent yet; `dry_run` is on by default.
+> **Status:** Phase 2 (data providers) complete — fixtures/results/standings/odds behind a
+> failover provider interface. Alert engine and WhatsApp delivery land in later phases.
+> See [`PLAN.md`](PLAN.md). Nothing is sent yet; `dry_run` is on by default.
 
 ## Quick start (WSL2)
 
@@ -46,7 +47,13 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 |---|---|
 | `python -m sportsup plan` | Print tracked events/teams/toggles + schedule + credential status |
 | `python -m sportsup validate` | Validate config and initialize the SQLite state store |
+| `python -m sportsup providers` | Probe data-provider connectivity/auth (needs API keys in `.env`) |
+| `python -m sportsup fixtures` | Fetch & print upcoming fixtures for watched teams in your timezone |
 | `python -m sportsup run` | Boot everything (live scheduler arrives in Phase 5) |
+
+`providers` and `fixtures` need at least `FOOTBALL_DATA_API_KEY` in `.env`
+([free token](https://www.football-data.org/client/register)); add `API_FOOTBALL_KEY` to
+enable odds-based shock detection later. Without keys they exit with a clear message.
 
 ## Design notes
 
