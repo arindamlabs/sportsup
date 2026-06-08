@@ -57,6 +57,7 @@ def test_message_for_alert_uses_template_when_configured():
     assert msg.template_name == "sportsup_alert"
     param = msg.template_components[0]["parameters"][0]["text"]
     assert "\n" not in param          # body params must be single-line
+    assert "*" not in param and "_" not in param  # markdown stripped for template mode
     assert "WC" in param and "big upset" in param
 
 
