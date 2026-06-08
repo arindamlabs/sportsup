@@ -149,7 +149,7 @@ class ShockDetectionConfig(BaseModel):
 class DeliveryConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
-    provider: str = Field("meta_cloud", pattern="^(meta_cloud|twilio|console)$")
+    provider: str = Field("meta_cloud", pattern="^(meta_cloud|twilio|telegram|console)$")
     # Safety: when true, format + log messages instead of sending. Env can override.
     dry_run: bool = True
     # Optional approved utility template so alerts deliver OUTSIDE the 24h window.

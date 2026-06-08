@@ -24,6 +24,10 @@ class Secrets(BaseSettings):
     whatsapp_phone_number_id: str | None = Field(None, alias="WHATSAPP_PHONE_NUMBER_ID")
     whatsapp_recipient: str | None = Field(None, alias="WHATSAPP_RECIPIENT")
 
+    # Telegram Bot API (free alternative delivery channel)
+    telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")
+
     # Global override for delivery.dry_run; None means "use config value".
     dry_run_override: bool | None = Field(None, alias="SPORTSUP_DRY_RUN")
 
@@ -35,4 +39,5 @@ class Secrets(BaseSettings):
             "whatsapp-cloud": bool(
                 self.whatsapp_access_token and self.whatsapp_phone_number_id
             ),
+            "telegram": bool(self.telegram_bot_token and self.telegram_chat_id),
         }

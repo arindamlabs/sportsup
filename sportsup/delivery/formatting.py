@@ -72,7 +72,8 @@ def message_for_alert(alert: Alert, config, recipient: str) -> OutboundMessage:
     """
     text = format_alert(alert, config.tzinfo)
     tmpl = config.delivery.alert_template_name
-    if tmpl:
+    # Templates are a WhatsApp concept; other channels (telegram/console) always use text.
+    if tmpl and config.delivery.provider in ("meta_cloud", "twilio"):
         # Template body params: single line, and strip WhatsApp markdown markers
         # (*bold* / _italic_) which don't render inside a variable.
         one_line = " · ".join(p for p in text.splitlines() if p.strip())

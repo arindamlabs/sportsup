@@ -31,7 +31,31 @@ python -m sportsup run --once      # one full cycle, console output, nothing sen
 4. Flip the switch: set `delivery.dry_run: false` in `config.yaml` **or** `SPORTSUP_DRY_RUN=false` in `.env`.
 5. Start it: `python -m sportsup run` (foreground) or `docker compose up -d`.
 
-## ⚠️ The 24-hour window — and the fix
+## Telegram (recommended free channel)
+
+Telegram has **no payment method, no template approval, no 24-hour window, and no per-message cost** —
+the simplest reliable path. To enable:
+
+1. In the Telegram app, message **@BotFather** → `/newbot` → pick a name and a username ending in `bot`.
+   Copy the **token** it gives you (`123456:ABC...`).
+2. Open a chat with your new bot and send it any message (e.g. "hi") — a bot can't message you until you do.
+3. Get your numeric **chat id**: message **@userinfobot** `/start` (it replies with your id), or visit
+   `https://api.telegram.org/bot<TOKEN>/getUpdates` and read `result[].message.chat.id`.
+4. Put both in `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=123456:ABC...
+   TELEGRAM_CHAT_ID=987654321
+   ```
+5. Set `delivery.provider: telegram` in `config.yaml` (already the default).
+6. Test, then go live:
+   ```bash
+   python -m sportsup run --once                 # dry-run, console output
+   SPORTSUP_DRY_RUN=false python -m sportsup notify   # delivers any due alerts for real
+   # when happy: set delivery.dry_run: false, then `run` / `docker compose up -d`
+   ```
+WhatsApp stays fully implemented (`provider: meta_cloud`) — switching channels is a one-line config change.
+
+## ⚠️ WhatsApp only: the 24-hour window — and the fix
 
 WhatsApp only lets a business send **free-form text** within 24h of the user last messaging it.
 Outside that window Meta rejects text with **error 131047** ("re-engagement"). Two ways to cope:

@@ -24,13 +24,16 @@ shock_detection:
   signal_priority: ["odds", "standings", "form"]
 
 delivery:
-  provider: meta_cloud       # meta_cloud | twilio | console
+  provider: telegram         # telegram (free) | meta_cloud (WhatsApp) | twilio | console
   dry_run: true              # true = print messages instead of sending (env SPORTSUP_DRY_RUN overrides)
-  # Optional: approved utility template so alerts deliver OUTSIDE WhatsApp's 24h window.
-  # Leave null to send free-form text (works only within 24h of you messaging the bot).
-  # See RUNBOOK.md "Creating the utility template".
+  # --- WhatsApp-only: approved utility template so alerts deliver OUTSIDE the 24h window.
+  #     Ignored for telegram/console. See RUNBOOK.md "Creating the utility template".
   # alert_template_name: sportsup_alert
   # alert_template_lang: en_US
+  #
+  # Channel credentials live in .env:
+  #   telegram   -> TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+  #   meta_cloud -> WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT
 
 scheduling:                  # cadences for `sportsup run` (the always-on runtime)
   fixture_sync_hours: 12     # re-pull fixtures this often

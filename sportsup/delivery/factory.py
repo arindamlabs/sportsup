@@ -31,6 +31,17 @@ def build_sender(config, secrets) -> WhatsAppSender | None:
     if provider == "console":
         return ConsoleSender()
 
+    if provider == "telegram":
+        if not (secrets.telegram_bot_token and secrets.telegram_chat_id):
+            logger.error(
+                "delivery.provider=telegram but TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID "
+                "are not set in .env"
+            )
+            return None
+        from .telegram import TelegramSender
+
+        return TelegramSender(secrets.telegram_bot_token, secrets.telegram_chat_id)
+
     if provider == "meta_cloud":
         if not (secrets.whatsapp_access_token and secrets.whatsapp_phone_number_id):
             logger.error(

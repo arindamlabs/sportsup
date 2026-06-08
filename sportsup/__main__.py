@@ -104,6 +104,28 @@ def cmd_plan(args, logger) -> int:
     return 0
 
 
+def _active_recipient(config: AppConfig, secrets: Secrets) -> str | None:
+    """The recipient id for the configured channel: Telegram chat id, else WhatsApp number."""
+    if config.delivery.provider == "telegram":
+        return secrets.telegram_chat_id
+    return secrets.whatsapp_recipient
+
+
+def _resolve_recipient(config: AppConfig, secrets: Secrets, sender, logger) -> str | None:
+    """Recipient for the active channel. In dry-run (console) a placeholder is fine since
+    nothing is actually delivered; a live channel must have its recipient configured."""
+    recipient = _active_recipient(config, secrets)
+    if recipient:
+        return recipient
+    if sender.name == "console":
+        return "(dry-run)"
+    if config.delivery.provider == "telegram":
+        logger.error("Set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env (provider=telegram).")
+    else:
+        logger.error("Set WHATSAPP_RECIPIENT in .env (provider=%s).", config.delivery.provider)
+    return None
+
+
 def _build_router_or_warn(secrets: Secrets, config: AppConfig, logger):
     league_map = {
         e.competition_code: e.api_football_league
@@ -308,12 +330,11 @@ def cmd_notify(args, logger) -> int:
     router = _build_router_or_warn(secrets, config, logger)
     if router is None:
         return 2
-    recipient = secrets.whatsapp_recipient
-    if not recipient:
-        logger.error("Set WHATSAPP_RECIPIENT in .env.")
-        return 2
     sender = build_sender(config, secrets)
     if sender is None:
+        return 2
+    recipient = _resolve_recipient(config, secrets, sender, logger)
+    if not recipient:
         return 2
 
     store = StateStore(args.db)
@@ -379,12 +400,11 @@ def cmd_run(args, logger) -> int:
     router = _build_router_or_warn(secrets, config, logger)
     if router is None:
         return 2
-    recipient = secrets.whatsapp_recipient
-    if not recipient:
-        logger.error("Set WHATSAPP_RECIPIENT in .env.")
-        return 2
     sender = build_sender(config, secrets)
     if sender is None:
+        return 2
+    recipient = _resolve_recipient(config, secrets, sender, logger)
+    if not recipient:
         return 2
 
     store = StateStore(args.db)

@@ -9,12 +9,14 @@ from .base import OutboundMessage, SendResult, WhatsAppSender
 from .console import ConsoleSender
 from .factory import build_sender
 from .formatting import format_alert, message_for_alert
+from .telegram import TelegramSender
 
 __all__ = [
     "OutboundMessage",
     "SendResult",
     "WhatsAppSender",
     "ConsoleSender",
+    "TelegramSender",
     "build_sender",
     "format_alert",
     "message_for_alert",

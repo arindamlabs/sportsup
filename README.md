@@ -63,8 +63,9 @@ enable odds-based shock detection later. Without keys they exit with a clear mes
 
 ## Design notes
 
-- **Delivery:** Meta WhatsApp Cloud API (free test number) behind a swappable sender interface.
-  Unofficial WhatsApp automation is intentionally **not** used (ToS / ban risk).
+- **Delivery:** swappable sender interface — **Telegram** (free, default), **WhatsApp** Meta Cloud API,
+  or console (dry-run). Switch with one line: `delivery.provider`. Unofficial WhatsApp automation is
+  intentionally **not** used (ToS / ban risk).
 - **Data:** football-data.org (fixtures/results/standings) + API-Football (odds) behind a provider interface.
 - **State:** SQLite store gives exactly-once alerts that survive restarts.
 - **Hosting:** develop locally, deploy the same container to an always-on host (Oracle Always-Free ARM VM).
