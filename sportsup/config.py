@@ -154,6 +154,18 @@ class DeliveryConfig(BaseModel):
     dry_run: bool = True
 
 
+class SchedulingConfig(BaseModel):
+    """Cadences for the always-on runtime (Phase 5), tuned to respect API rate limits:
+    fixtures change rarely (sync a couple times a day) while reminders need a tight check."""
+
+    model_config = {"extra": "forbid"}
+
+    fixture_sync_hours: int = Field(12, ge=1, le=168)      # re-pull fixtures this often
+    reminder_check_minutes: int = Field(5, ge=1, le=180)   # how often to fire due reminders
+    result_poll_minutes: int = Field(15, ge=1, le=360)     # how often to scan for results
+    result_lookback_days: int = Field(2, ge=1, le=30)      # how far back to scan for finished matches
+
+
 class AppConfig(BaseModel):
     """Root configuration object."""
 
@@ -165,6 +177,7 @@ class AppConfig(BaseModel):
     reminders: ReminderConfig = ReminderConfig()
     shock_detection: ShockDetectionConfig = ShockDetectionConfig()
     delivery: DeliveryConfig = DeliveryConfig()
+    scheduling: SchedulingConfig = SchedulingConfig()
     events: list[EventConfig] = Field(default_factory=list)
 
     @field_validator("timezone")

@@ -22,8 +22,8 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - [x] **Phase 1 — Scaffold.** Config schema, state/dedup store, secrets handling, Docker, runnable skeleton.
 - [x] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.
 - [x] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.
-- [ ] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.  ← _in review_
-- [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.
+- [x] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.
+- [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.  ← _in review_
 - [ ] **Phase 6 — Hardening.** Retries, backoff, failover, logging + status view, tests, docs (README + runbook + deploy guide).
 
 ## Working agreement
@@ -130,3 +130,25 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 > pre-approved **utility template** — surfaced as error 131047. For reliable always-on alerts we'll
 > add a simple approved utility template in Phase 6 (runbook); the test number's `hello_world`
 > template already works any time for the connectivity check.
+
+## Phase 5 — deliverables & acceptance
+**Deliverables**
+- `config.py` — new `scheduling` section (`fixture_sync_hours`, `reminder_check_minutes`, `result_poll_minutes`, `result_lookback_days`).
+- `sportsup/pipeline.py` — shared `plan_all_reminders()` / `gather_result_alerts()` used by CLI and runtime (single source of truth).
+- `sportsup/runtime.py`:
+  - `in_quiet_hours()` (handles overnight windows) + pure `classify_reminder()` / `classify_result()` (send / wait / defer / drop).
+  - `SchedulerRuntime` — APScheduler `BlockingScheduler` with three interval jobs (fixture sync, reminder firing, result polling); `run_once()` for cron/tests; delivers via the sender and marks dedup only on real sends.
+- `engine.plan_reminders(..., include_past=True)` — catch-up for the runtime (deliver a missed reminder for a still-upcoming match) vs. forward-only preview for `alerts`.
+- CLI `run [--once]` now starts the real runtime; `docker compose` runs it (`restart: unless-stopped`, dry-run safe by default).
+- `tests/test_runtime.py` — 6 tests (quiet-hours windowing, classification matrix, `run_once` send + dedup).
+
+**Acceptance criteria**
+- Reminders fire at their lead times in local tz; quiet-hours `defer` postpones to after the window, `suppress` drops them; stale reminders (match already started) never fire.
+- Result/upset alerts deliver on the poll cadence, gated by quiet hours.
+- Everything dedups exactly-once across cycles and restarts.
+- 45/45 tests pass; `run --once` completes a full cycle against live data.
+
+**How to verify (you)**
+- `python -m sportsup run --once` → one sync/fire/poll cycle (dry-run console; nothing sent).
+- `python -m sportsup run` → always-on loop (Ctrl-C to stop). With `dry_run: false` it sends real alerts at lead times.
+- `docker compose up -d` → runs the service in the background (still dry-run until you flip `SPORTSUP_DRY_RUN=false`).

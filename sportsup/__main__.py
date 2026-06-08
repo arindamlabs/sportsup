@@ -23,9 +23,10 @@ from .alerts.models import Alert, AlertType
 from .config import AppConfig, load_config
 from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert
 from .logging_setup import setup_logging
-from .providers import Fixture, MatchStatus, ProviderError, TeamRef
+from .pipeline import gather_result_alerts, plan_all_reminders
+from .providers import Fixture, MatchStatus, TeamRef
 from .providers.router import build_router
-from .providers.teams import TeamResolver
+from .runtime import SchedulerRuntime
 from .settings import Secrets
 from .state import StateStore
 from .sync import collect_watched_fixtures
@@ -176,60 +177,6 @@ def cmd_fixtures(args, logger) -> int:
     return 0
 
 
-def _all_reminders(config, router, engine, now) -> list[Alert]:
-    """Every future reminder for watched fixtures (unsent), across all enabled events."""
-    out: list[Alert] = []
-    fixtures_by_event = {ef.event.id: ef for ef in collect_watched_fixtures(config, router, now=now)}
-    for ev in config.enabled_events:
-        ef = fixtures_by_event.get(ev.id)
-        if ef is None or ef.error:
-            continue
-        out.extend(engine.unsent(engine.plan_reminders(ev, ef.fixtures, now=now)))
-    return out
-
-
-def _all_result_alerts(config, router, engine, now, results_days, logger) -> list[Alert]:
-    """Final-score / shock alerts (unsent) for watched matches finished in the window."""
-    out: list[Alert] = []
-    since = now - timedelta(days=results_days)
-    for ev in config.enabled_events:
-        resolver = TeamResolver(ev.teams)
-        try:
-            results = router.get_results(
-                competition_code=ev.competition_code, season=ev.season,
-                date_from=since, date_to=now,
-            )
-        except ProviderError as exc:
-            logger.warning("%s: results unavailable (%s)", ev.name, exc)
-            continue
-        watched = [
-            r for r in results
-            if not ev.teams or resolver.is_watched(r.fixture.home.name)
-            or resolver.is_watched(r.fixture.away.name)
-        ]
-        standings = None
-        if ev.alerts.shock_result and watched:
-            try:
-                standings = router.get_standings(competition_code=ev.competition_code, season=ev.season)
-            except ProviderError:
-                standings = None
-
-        def odds_lookup(r, _ev=ev):
-            try:
-                return router.get_match_odds(
-                    competition_code=_ev.competition_code, season=_ev.season,
-                    home_team=r.fixture.home.name, away_team=r.fixture.away.name,
-                    kickoff=r.fixture.utc_kickoff,
-                )
-            except ProviderError:
-                return None
-
-        out.extend(engine.unsent(
-            engine.evaluate_results(ev, watched, odds_lookup=odds_lookup, standings=standings)
-        ))
-    return out
-
-
 def cmd_alerts(args, logger) -> int:
     """Dry-run preview of the alert engine: scheduled reminders + any result/upset alerts.
     Does NOT mark anything as sent (that happens at delivery time via `notify`)."""
@@ -245,7 +192,7 @@ def cmd_alerts(args, logger) -> int:
     logger.info("=" * 60)
     logger.info("SCHEDULED REMINDERS (times in %s)", config.timezone)
     logger.info("=" * 60)
-    reminders = sorted(_all_reminders(config, router, engine, now), key=lambda a: a.scheduled_for)
+    reminders = sorted(plan_all_reminders(config, router, engine, now), key=lambda a: a.scheduled_for)
     for a in reminders:
         local = a.scheduled_for.astimezone(config.tzinfo).strftime("%a %d %b %H:%M %Z")
         logger.info("  %s  %s", local, a.summary)
@@ -255,7 +202,8 @@ def cmd_alerts(args, logger) -> int:
     logger.info("=" * 60)
     logger.info("RESULT ALERTS (finished matches in the last %d days)", args.results_days)
     logger.info("=" * 60)
-    results = _all_result_alerts(config, router, engine, now, args.results_days, logger)
+    results = gather_result_alerts(config, router, engine, now,
+                                   lookback_days=args.results_days, logger=logger)
     for a in results:
         logger.info("  %s", a.summary)
     if not results:
@@ -347,8 +295,10 @@ def cmd_notify(args, logger) -> int:
     tz = config.tzinfo
 
     # Reminders whose lead time has arrived, plus result/shock alerts for finished matches.
-    due = [a for a in _all_reminders(config, router, engine, now) if a.scheduled_for <= now]
-    due += _all_result_alerts(config, router, engine, now, args.results_days, logger)
+    due = [a for a in plan_all_reminders(config, router, engine, now, include_past=True)
+           if a.scheduled_for <= now]
+    due += gather_result_alerts(config, router, engine, now,
+                                lookback_days=args.results_days, logger=logger)
 
     sent = failed = 0
     for a in due:
@@ -369,17 +319,30 @@ def cmd_notify(args, logger) -> int:
 
 
 def cmd_run(args, logger) -> int:
+    """Start the always-on scheduling runtime (or a single cycle with --once)."""
     config = load_config(args.config)
     secrets = Secrets()
+    router = _build_router_or_warn(secrets, config, logger)
+    if router is None:
+        return 2
+    recipient = secrets.whatsapp_recipient
+    if not recipient:
+        logger.error("Set WHATSAPP_RECIPIENT in .env.")
+        return 2
+    sender = build_sender(config, secrets)
+    if sender is None:
+        return 2
+
     store = StateStore(args.db)
     _print_plan(config, secrets, logger)
-    logger.info("State store ready at %s", store.db_path)
-    logger.warning(
-        "Phase 1 skeleton: data providers (Phase 2), alert engine (Phase 3), "
-        "WhatsApp delivery (Phase 4) and the live scheduler (Phase 5) are not wired up yet. "
-        "Nothing will be sent. Exiting cleanly."
-    )
-    store.close()
+    runtime = SchedulerRuntime(config, router, sender, store, recipient)
+    try:
+        if args.once:
+            runtime.run_once()
+        else:
+            runtime.run()  # blocks until interrupted
+    finally:
+        store.close()
     return 0
 
 
@@ -404,7 +367,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_wa.add_argument("--live", action="store_true", help="actually send a real test message via Meta Cloud API")
     p_notify = sub.add_parser("notify", parents=[common], help="deliver due alerts via the configured sender (console if dry-run)")
     p_notify.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
-    sub.add_parser("run", parents=[common], help="boot everything (scheduler arrives in Phase 5)")
+    p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
+    p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
 
 

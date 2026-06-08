@@ -12,6 +12,7 @@ services:
       # Persist state + logs across restarts/redeploys.
       - ./data:/app/data
       - ./logs:/app/logs
-    # Phase 1: print the plan and exit. Switch to ["run"] once Phase 5 lands.
-    command: ["plan"]
-    restart: "no"
+    # Always-on runtime. dry_run defaults true, so it won't send until you opt in
+    # (set SPORTSUP_DRY_RUN=false in .env / delivery.dry_run: false in config.yaml).
+    command: ["run"]
+    restart: unless-stopped

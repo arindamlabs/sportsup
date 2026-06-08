@@ -32,19 +32,25 @@ class AlertEngine:
     # --- reminders --------------------------------------------------------
 
     def plan_reminders(
-        self, event: EventConfig, fixtures: Iterable[Fixture], *, now: datetime
+        self, event: EventConfig, fixtures: Iterable[Fixture], *, now: datetime,
+        include_past: bool = False,
     ) -> list[Alert]:
-        """One reminder per (upcoming fixture × configured lead-time) still in the future."""
+        """Reminders for upcoming fixtures × configured lead-times.
+
+        By default only reminders whose lead-window is still in the future are returned
+        (a clean forward schedule for previews). With ``include_past=True`` the runtime
+        also gets reminders whose window has already arrived — for a still-upcoming match —
+        so a missed/late tick can catch up (dedup keeps it exactly-once)."""
         if not event.alerts.upcoming_fixtures:
             return []
         alerts: list[Alert] = []
         for fx in fixtures:
             if fx.utc_kickoff <= now:
-                continue
+                continue  # match already kicked off — no reminders
             for lead_label in self.config.reminders.lead_times:
                 fire_at = fx.utc_kickoff - parse_lead_time(lead_label)
-                if fire_at < now:
-                    continue  # lead window already passed; don't backfill
+                if fire_at < now and not include_past:
+                    continue  # lead window already passed; don't backfill in preview mode
                 alerts.append(
                     Alert(
                         type=AlertType.FIXTURE_REMINDER,

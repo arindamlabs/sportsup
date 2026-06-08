@@ -27,6 +27,12 @@ delivery:
   provider: meta_cloud       # meta_cloud | twilio | console
   dry_run: true              # true = print messages instead of sending (env SPORTSUP_DRY_RUN overrides)
 
+scheduling:                  # cadences for `sportsup run` (the always-on runtime)
+  fixture_sync_hours: 12     # re-pull fixtures this often
+  reminder_check_minutes: 5  # how often to fire due reminders
+  result_poll_minutes: 15    # how often to scan for finished matches
+  result_lookback_days: 2    # how far back to look for results on each scan
+
 events:
   - id: world-cup-2026
     name: FIFA World Cup 2026
