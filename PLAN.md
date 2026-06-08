@@ -23,8 +23,8 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - [x] **Phase 2 — Data providers.** `SportsDataProvider` interface + football-data.org & API-Football adapters; failover.
 - [x] **Phase 3 — Alert engine.** Reminder scheduling, result detection, upset heuristic, dedup.
 - [x] **Phase 4 — WhatsApp delivery.** `WhatsAppSender` (Meta Cloud primary, Twilio fallback), formatting, dry-run.
-- [ ] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.  ← _in review_
-- [ ] **Phase 6 — Hardening.** Retries, backoff, failover, logging + status view, tests, docs (README + runbook + deploy guide).
+- [x] **Phase 5 — Runtime.** Scheduler/poller loop, timezone rendering, quiet-hours defer/suppress.
+- [ ] **Phase 6 — Hardening.** Retries, backoff, failover, logging + status view, tests, docs (README + runbook + deploy guide).  ← _in review_
 
 ## Working agreement
 - Small reviewable commits. Stop at each phase boundary for review.
@@ -152,3 +152,30 @@ fallback → form-differential tiebreaker. Tunable via `shock_detection` config.
 - `python -m sportsup run --once` → one sync/fire/poll cycle (dry-run console; nothing sent).
 - `python -m sportsup run` → always-on loop (Ctrl-C to stop). With `dry_run: false` it sends real alerts at lead times.
 - `docker compose up -d` → runs the service in the background (still dry-run until you flip `SPORTSUP_DRY_RUN=false`).
+
+## Phase 6 — deliverables & acceptance
+**Deliverables**
+- Resilience: `plan_reminders` skips postponed/cancelled/suspended fixtures; runtime jobs wrapped so a
+  transient error logs and the scheduler keeps running; provider failover + retry/backoff already in place.
+- Out-of-24h-window delivery: `delivery.alert_template_name` config + `message_for_alert()` builder sends
+  alerts as an approved utility template (single-line `{{1}}`) when configured, else free-form text.
+- `status` CLI — sent-alert history, totals, last sync (reads the store, no network); `state.recent_sent()`.
+- Docs: `RUNBOOK.md` (operations, template creation, troubleshooting) + `DEPLOY.md` (Oracle/GCP always-on)
+  + README updates.
+- `tests/test_hardening.py` — 4 tests (postponed-skip, text vs template message, recent_sent).
+
+**Acceptance criteria**
+- Postponed/cancelled matches never generate reminders; a failing event doesn't stop the runtime.
+- With a template configured, alerts send as a template (deliver any time); otherwise as text.
+- `status` shows last sync + recent sends; runbook + deploy guide are complete and accurate.
+- 49/49 tests pass.
+
+**How to verify (you)**
+- `python -m sportsup status` → totals, last sync, recent alerts.
+- Create the `sportsup_alert` template (RUNBOOK), set `delivery.alert_template_name`, then a live alert
+  delivers outside the 24h window.
+- Follow `DEPLOY.md` to run it 24/7 on a free Oracle ARM VM.
+
+---
+**SportsUp is feature-complete.** Optional future work: Twilio sender implementation, multi-recipient
+support, live in-match alerts (paid data tier), and a small web status page.

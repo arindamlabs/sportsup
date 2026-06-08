@@ -26,6 +26,11 @@ shock_detection:
 delivery:
   provider: meta_cloud       # meta_cloud | twilio | console
   dry_run: true              # true = print messages instead of sending (env SPORTSUP_DRY_RUN overrides)
+  # Optional: approved utility template so alerts deliver OUTSIDE WhatsApp's 24h window.
+  # Leave null to send free-form text (works only within 24h of you messaging the bot).
+  # See RUNBOOK.md "Creating the utility template".
+  # alert_template_name: sportsup_alert
+  # alert_template_lang: en_US
 
 scheduling:                  # cadences for `sportsup run` (the always-on runtime)
   fixture_sync_hours: 12     # re-pull fixtures this often

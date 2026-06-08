@@ -19,7 +19,7 @@ from typing import Literal
 from .alerts import AlertEngine
 from .alerts.models import Alert
 from .config import AppConfig
-from .delivery import OutboundMessage, format_alert
+from .delivery import message_for_alert
 from .delivery.base import WhatsAppSender
 from .pipeline import gather_result_alerts, plan_all_reminders
 from .providers.router import ProviderRouter
@@ -82,36 +82,48 @@ class SchedulerRuntime:
     # --- jobs -------------------------------------------------------------
 
     def sync_fixtures(self) -> None:
-        from .sync import collect_watched_fixtures
-        total = 0
-        for ef in collect_watched_fixtures(self.config, self.router):
-            if ef.error:
-                logger.warning("fixture sync error for %s: %s", ef.event.id, ef.error)
-                continue
-            self._fixtures[ef.event.id] = ef.fixtures
-            total += len(ef.fixtures)
-        logger.info("fixture sync complete: %d watched fixtures cached", total)
+        try:
+            from .sync import collect_watched_fixtures
+            total = 0
+            for ef in collect_watched_fixtures(self.config, self.router):
+                if ef.error:
+                    logger.warning("fixture sync error for %s: %s", ef.event.id, ef.error)
+                    continue
+                self._fixtures[ef.event.id] = ef.fixtures
+                total += len(ef.fixtures)
+            self.store.set_meta("last_fixture_sync_utc", datetime.now(timezone.utc).isoformat())
+            self.store.set_meta("cached_fixture_count", str(total))
+            logger.info("fixture sync complete: %d watched fixtures cached", total)
+        except Exception:  # noqa: BLE001 — never let a job kill the scheduler
+            logger.exception("fixture sync failed; keeping previous cache")
 
     def fire_reminders(self) -> None:
         now = datetime.now(timezone.utc)
         for ev in self.config.enabled_events:
-            fixtures = self._fixtures.get(ev.id, [])
-            reminders = self.engine.unsent(
-                self.engine.plan_reminders(ev, fixtures, now=now, include_past=True)
-            )
-            for a in reminders:
-                action = classify_reminder(a, now, self.config)
-                if action == "send":
-                    self._deliver(a)
-                elif action == "drop":
-                    self.engine.mark_sent(a)  # stale or suppressed — never resurface
+            try:
+                fixtures = self._fixtures.get(ev.id, [])
+                reminders = self.engine.unsent(
+                    self.engine.plan_reminders(ev, fixtures, now=now, include_past=True)
+                )
+                for a in reminders:
+                    action = classify_reminder(a, now, self.config)
+                    if action == "send":
+                        self._deliver(a)
+                    elif action == "drop":
+                        self.engine.mark_sent(a)  # stale or suppressed — never resurface
+            except Exception:  # noqa: BLE001
+                logger.exception("reminder firing failed for %s", ev.id)
 
     def poll_results(self) -> None:
         now = datetime.now(timezone.utc)
-        alerts = gather_result_alerts(
-            self.config, self.router, self.engine, now,
-            lookback_days=self.config.scheduling.result_lookback_days, logger=logger,
-        )
+        try:
+            alerts = gather_result_alerts(
+                self.config, self.router, self.engine, now,
+                lookback_days=self.config.scheduling.result_lookback_days, logger=logger,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("result polling failed")
+            return
         for a in alerts:
             action = classify_result(now, self.config)
             if action == "send":
@@ -128,12 +140,7 @@ class SchedulerRuntime:
     # --- delivery ---------------------------------------------------------
 
     def _deliver(self, alert: Alert) -> None:
-        msg = OutboundMessage(
-            recipient=self.recipient,
-            text=format_alert(alert, self.config.tzinfo),
-            dedup_key=alert.dedup_key,
-        )
-        res = self.sender.send(msg)
+        res = self.sender.send(message_for_alert(alert, self.config, self.recipient))
         if res.ok:
             # Persist dedup only on real delivery so dry-runs stay repeatable.
             if res.provider != "console":

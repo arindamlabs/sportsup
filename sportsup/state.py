@@ -86,6 +86,15 @@ class StateStore:
     def sent_count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM sent_alerts").fetchone()[0]
 
+    def recent_sent(self, limit: int = 20) -> list[sqlite3.Row]:
+        """Most recently sent alerts, newest first — powers the `status` view."""
+        cur = self._conn.execute(
+            "SELECT dedup_key, event_id, alert_type, sent_at FROM sent_alerts "
+            "ORDER BY sent_at DESC LIMIT ?",
+            (limit,),
+        )
+        return cur.fetchall()
+
     # --- generic meta key/value ------------------------------------------
 
     def get_meta(self, key: str) -> str | None:

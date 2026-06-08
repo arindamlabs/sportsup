@@ -8,7 +8,7 @@ config/secrets decision resolved by :func:`build_sender` — no caller knows the
 from .base import OutboundMessage, SendResult, WhatsAppSender
 from .console import ConsoleSender
 from .factory import build_sender
-from .formatting import format_alert
+from .formatting import format_alert, message_for_alert
 
 __all__ = [
     "OutboundMessage",
@@ -17,4 +17,5 @@ __all__ = [
     "ConsoleSender",
     "build_sender",
     "format_alert",
+    "message_for_alert",
 ]

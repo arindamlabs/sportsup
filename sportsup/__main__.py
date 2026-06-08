@@ -21,7 +21,7 @@ from . import __version__
 from .alerts import AlertEngine
 from .alerts.models import Alert, AlertType
 from .config import AppConfig, load_config
-from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert
+from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert, message_for_alert
 from .logging_setup import setup_logging
 from .pipeline import gather_result_alerts, plan_all_reminders
 from .providers import Fixture, MatchStatus, TeamRef
@@ -302,7 +302,7 @@ def cmd_notify(args, logger) -> int:
 
     sent = failed = 0
     for a in due:
-        res = sender.send(OutboundMessage(recipient=recipient, text=format_alert(a, tz), dedup_key=a.dedup_key))
+        res = sender.send(message_for_alert(a, config, recipient))
         if res.ok:
             sent += 1
             # Only persist dedup on a *real* delivery so dry-runs stay repeatable.
@@ -314,6 +314,33 @@ def cmd_notify(args, logger) -> int:
 
     note = "dry-run: nothing marked sent." if sender.name == "console" else ""
     logger.info("notify via %s: %d due, %d sent, %d failed. %s", sender.name, len(due), sent, failed, note)
+    store.close()
+    return 0
+
+
+def cmd_status(args, logger) -> int:
+    """Show what's been sent and when the runtime last synced (reads the state store)."""
+    config = load_config(args.config)
+    store = StateStore(args.db)
+    tz = config.tzinfo
+
+    logger.info("SportsUp status")
+    logger.info("  state store : %s", store.db_path)
+    logger.info("  alerts sent : %d total", store.sent_count())
+    last_sync = store.get_meta("last_fixture_sync_utc")
+    if last_sync:
+        local = datetime.fromisoformat(last_sync).astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
+        logger.info("  last sync   : %s (%s fixtures cached)", local, store.get_meta("cached_fixture_count") or "?")
+    else:
+        logger.info("  last sync   : never (runtime not started yet)")
+
+    recent = store.recent_sent(args.limit)
+    logger.info("  recent sent (newest first, up to %d):", args.limit)
+    for r in recent:
+        local = datetime.fromisoformat(r["sent_at"]).astimezone(tz).strftime("%d %b %H:%M %Z")
+        logger.info("    %s  %-16s %s", local, r["alert_type"] or "-", r["dedup_key"])
+    if not recent:
+        logger.info("    (nothing sent yet — run `notify` or `run` after matches start)")
     store.close()
     return 0
 
@@ -367,6 +394,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_wa.add_argument("--live", action="store_true", help="actually send a real test message via Meta Cloud API")
     p_notify = sub.add_parser("notify", parents=[common], help="deliver due alerts via the configured sender (console if dry-run)")
     p_notify.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
+    p_status = sub.add_parser("status", parents=[common], help="show sent-alert history + last sync (no network)")
+    p_status.add_argument("--limit", type=int, default=20, help="how many recent alerts to show")
     p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
     p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
@@ -385,6 +414,7 @@ def main(argv: list[str] | None = None) -> int:
         "alerts": cmd_alerts,
         "whatsapp-test": cmd_whatsapp_test,
         "notify": cmd_notify,
+        "status": cmd_status,
         "run": cmd_run,
     }
     try:

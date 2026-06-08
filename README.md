@@ -10,9 +10,9 @@ A configurable, single-user tool that tracks sporting events (e.g. **FIFA World 
 Events, teams, alert types, reminder lead-times, timezone, quiet hours, and upset sensitivity all live
 in editable config — adding a competition or team is a config change, not a code change.
 
-> **Status:** Phase 5 complete — data providers, alert engine, WhatsApp delivery, and the
-> always-on **scheduling runtime** (`sportsup run`) with quiet-hours and timezone handling.
-> Remaining: hardening + docs (Phase 6). See [`PLAN.md`](PLAN.md).
+> **Status:** Feature-complete (Phases 0–6). Data providers, alert engine, WhatsApp delivery,
+> always-on scheduling runtime with quiet hours, and hardening + docs. See [`PLAN.md`](PLAN.md),
+> [`RUNBOOK.md`](RUNBOOK.md) (operations), and [`DEPLOY.md`](DEPLOY.md) (always-on hosting).
 > `dry_run` is on by default, so nothing is sent until you opt in.
 
 ## Quick start (WSL2)
@@ -53,6 +53,7 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup alerts` | Dry-run preview of scheduled reminders + result/upset alerts |
 | `python -m sportsup whatsapp-test [--live]` | Preview message formatting; `--live` sends a real test WhatsApp |
 | `python -m sportsup notify` | Deliver due alerts once via the configured sender (console in dry-run) |
+| `python -m sportsup status` | Show sent-alert history + last sync (reads the state store, no network) |
 | `python -m sportsup run` | Start the always-on runtime (fixture sync + reminders + result polling) |
 | `python -m sportsup run --once` | Run a single sync/fire/poll cycle and exit (cron-style) |
 

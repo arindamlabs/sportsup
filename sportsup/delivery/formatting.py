@@ -11,6 +11,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from ..alerts.models import Alert, AlertType
+from .base import OutboundMessage
 
 _LEAD_UNITS = {"d": "day", "h": "hour", "m": "min"}
 
@@ -59,3 +60,25 @@ def format_alert(alert: Alert, tz: ZoneInfo) -> str:
         )
 
     return alert.summary  # fallback
+
+
+def message_for_alert(alert: Alert, config, recipient: str) -> OutboundMessage:
+    """Build the OutboundMessage for an alert, honoring the delivery config:
+
+    - if ``delivery.alert_template_name`` is set → send as that approved template with the
+      message as a single-line body parameter (delivers any time, in or out of the 24h
+      window). WhatsApp body params can't contain newlines, so the text is flattened.
+    - otherwise → free-form text (delivers only inside the 24h window).
+    """
+    text = format_alert(alert, config.tzinfo)
+    tmpl = config.delivery.alert_template_name
+    if tmpl:
+        one_line = " · ".join(p for p in text.splitlines() if p.strip())
+        return OutboundMessage(
+            recipient=recipient,
+            template_name=tmpl,
+            template_lang=config.delivery.alert_template_lang,
+            template_components=[{"type": "body", "parameters": [{"type": "text", "text": one_line}]}],
+            dedup_key=alert.dedup_key,
+        )
+    return OutboundMessage(recipient=recipient, text=text, dedup_key=alert.dedup_key)

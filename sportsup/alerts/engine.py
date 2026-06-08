@@ -47,6 +47,8 @@ class AlertEngine:
         for fx in fixtures:
             if fx.utc_kickoff <= now:
                 continue  # match already kicked off — no reminders
+            if not fx.status.is_upcoming:
+                continue  # postponed / cancelled / suspended — don't remind
             for lead_label in self.config.reminders.lead_times:
                 fire_at = fx.utc_kickoff - parse_lead_time(lead_label)
                 if fire_at < now and not include_past:
