@@ -51,7 +51,7 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup providers` | Probe data-provider connectivity/auth (needs API keys in `.env`) |
 | `python -m sportsup fixtures` | Fetch & print upcoming fixtures for watched teams in your timezone |
 | `python -m sportsup alerts` | Dry-run preview of scheduled reminders + result/upset alerts |
-| `python -m sportsup whatsapp-test [--live]` | Preview message formatting; `--live` sends a real test WhatsApp |
+| `python -m sportsup whatsapp-test [--live] [--template]` | Preview formatting; `--live` sends a real test (`hello_world`, or your `--template`) |
 | `python -m sportsup notify` | Deliver due alerts once via the configured sender (console in dry-run) |
 | `python -m sportsup status` | Show sent-alert history + last sync (reads the state store, no network) |
 | `python -m sportsup run` | Start the always-on runtime (fixture sync + reminders + result polling) |

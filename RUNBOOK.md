@@ -56,8 +56,18 @@ Outside that window Meta rejects text with **error 131047** ("re-engagement"). T
      alert_template_name: sportsup_alert
      alert_template_lang: en_US
    ```
-   SportsUp sends each alert as that template with the message flattened into `{{1}}` (single line —
-   WhatsApp body params can't contain newlines).
+   SportsUp sends each alert as that template with the message flattened into `{{1}}` (single line,
+   markdown stripped — WhatsApp body params can't contain newlines or formatting).
+6. Confirm the live path once the template shows **Approved**:
+   ```bash
+   python -m sportsup whatsapp-test --template            # dry-run: shows the {{1}} it would send
+   python -m sportsup whatsapp-test --live --template     # sends one real alert via your template
+   ```
+   A send error with code `132xxx` usually means the template isn't approved yet.
+
+> **Note:** Meta often re-classifies content templates like sports alerts from **Utility** to
+> **Marketing** — that's expected and fine (slightly higher per-message cost, still cents/month for
+> personal volume). No content change is needed; just wait for **Approved**.
 
 ## Monitoring
 
