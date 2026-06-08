@@ -70,6 +70,14 @@ def test_factory_telegram_missing_creds_returns_none():
     assert build_sender(cfg, _secrets()) is None
 
 
+def test_factory_force_live_bypasses_dry_run():
+    # `test-send` builds the real provider even when dry_run is on.
+    cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": True}})
+    s = _secrets(telegram_bot_token="t", telegram_chat_id="1")
+    assert isinstance(build_sender(cfg, s), __import__("sportsup.delivery.console", fromlist=["ConsoleSender"]).ConsoleSender)
+    assert isinstance(build_sender(cfg, s, force_live=True), TelegramSender)
+
+
 def test_telegram_provider_ignores_whatsapp_template():
     # Even with a template configured, telegram alerts must be plain text (no template).
     cfg = AppConfig.model_validate({"delivery": {

@@ -21,9 +21,12 @@ def resolve_dry_run(config, secrets) -> bool:
     return config.delivery.dry_run
 
 
-def build_sender(config, secrets) -> WhatsAppSender | None:
-    """Return a sender, or None if a live provider is selected but unconfigured."""
-    if resolve_dry_run(config, secrets):
+def build_sender(config, secrets, *, force_live: bool = False) -> WhatsAppSender | None:
+    """Return a sender, or None if a live provider is selected but unconfigured.
+
+    `force_live=True` skips the dry-run console short-circuit and builds the configured
+    provider's real sender — used by `test-send` to deliberately send a test message."""
+    if not force_live and resolve_dry_run(config, secrets):
         logger.info("dry-run enabled — using console sender (no real messages sent)")
         return ConsoleSender()
 

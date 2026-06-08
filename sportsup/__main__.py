@@ -322,6 +322,37 @@ def cmd_whatsapp_test(args, logger) -> int:
     return 1
 
 
+_CHANNEL_LABEL = {"telegram": "Telegram", "meta_cloud": "WhatsApp", "twilio": "WhatsApp",
+                  "console": "console output"}
+
+
+def cmd_test_send(args, logger) -> int:
+    """Send ONE real sample alert via the configured provider, to confirm the live path.
+    Ignores dry_run (that's the point), so it really delivers."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    sender = build_sender(config, secrets, force_live=True)
+    if sender is None:
+        logger.error("Provider '%s' has no credentials in .env — can't send.", config.delivery.provider)
+        return 2
+    recipient = _active_recipient(config, secrets)
+    if not recipient and sender.name != "console":
+        _resolve_recipient(config, secrets, sender, logger)  # logs the right hint
+        return 2
+
+    samples = _sample_alerts(datetime.now(timezone.utc))
+    alert = {"reminder": samples[0], "final": samples[1], "upset": samples[2]}[args.type]
+    label = _CHANNEL_LABEL.get(sender.name, sender.name)
+    logger.info("Sending a test '%s' alert via %s ...", args.type, sender.name)
+    res = sender.send(message_for_alert(alert, config, recipient or "(none)"))
+    if res.ok:
+        logger.info("TEST SEND OK (id %s) via %s — check your %s.",
+                    res.provider_message_id, sender.name, label)
+        return 0
+    logger.error("TEST SEND FAILED via %s: %s (code %s)", sender.name, res.error, res.error_code)
+    return 1
+
+
 def cmd_notify(args, logger) -> int:
     """Run the engine once and deliver due alerts through the configured sender.
     Console (dry-run) by default; this is what Phase 5's scheduler will call on a loop."""
@@ -445,6 +476,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_notify.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
     p_status = sub.add_parser("status", parents=[common], help="show sent-alert history + last sync (no network)")
     p_status.add_argument("--limit", type=int, default=20, help="how many recent alerts to show")
+    p_test = sub.add_parser("test-send", parents=[common], help="send one real sample alert via the configured provider (ignores dry_run)")
+    p_test.add_argument("--type", choices=["reminder", "final", "upset"], default="upset",
+                        help="which sample alert to send (default: upset)")
     p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
     p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
@@ -464,6 +498,7 @@ def main(argv: list[str] | None = None) -> int:
         "whatsapp-test": cmd_whatsapp_test,
         "notify": cmd_notify,
         "status": cmd_status,
+        "test-send": cmd_test_send,
         "run": cmd_run,
     }
     try:

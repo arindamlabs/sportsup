@@ -54,6 +54,7 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup whatsapp-test [--live] [--template]` | Preview formatting; `--live` sends a real test (`hello_world`, or your `--template`) |
 | `python -m sportsup notify` | Deliver due alerts once via the configured sender (console in dry-run) |
 | `python -m sportsup status` | Show sent-alert history + last sync (reads the state store, no network) |
+| `python -m sportsup test-send [--type upset]` | Send one real sample alert via the configured channel (ignores dry_run) |
 | `python -m sportsup run` | Start the always-on runtime (fixture sync + reminders + result polling) |
 | `python -m sportsup run --once` | Run a single sync/fire/poll cycle and exit (cron-style) |
 
