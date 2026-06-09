@@ -25,8 +25,8 @@ class Command:
 COMMANDS: list[Command] = [
     Command("start", "Subscribe and see what SportsUp can do", True),
     Command("help", "Show every command and how it works", True),
+    Command("subscribe", "Follow tournaments and teams (guided setup)", True),
     Command("mysubs", "List the tournaments and teams you follow", False),
-    Command("subscribe", "Follow a tournament or team", False),
     Command("unsubscribe", "Stop following a single team or tournament", False),
     Command("edit", "Change your teams, alert types, or reminder timing", False),
     Command("settings", "Set your timezone and quiet hours", False),
@@ -62,16 +62,44 @@ def help_text() -> str:
 
 def welcome_text(*, created: bool) -> str:
     if created:
-        head = f"👋 Welcome to <b>{BOT_NAME}</b>! You're subscribed."
-    else:
-        head = f"👋 Welcome back to <b>{BOT_NAME}</b>! You're already subscribed."
+        return (
+            f"👋 Welcome to <b>{BOT_NAME}</b>!\n\n"
+            "I'll alert you about the teams you follow — match reminders, upsets, and "
+            "optional final scores, in your timezone.\n\n"
+            "Let's set you up 👇"
+        )
     return (
-        f"{head}\n\n"
-        "I'll alert you about the teams you follow — match reminders, upsets, and "
-        "optional final scores.\n\n"
-        "🛠️ Picking your tournaments and teams is rolling out shortly. In the "
-        "meantime, send /help to see everything I can do."
+        f"👋 Welcome back to <b>{BOT_NAME}</b>! You're already subscribed.\n\n"
+        "Use /subscribe to follow more, or /help to see everything I can do."
     )
+
+
+# --- onboarding (Phase 9) --------------------------------------------------
+
+ONB_TOURNAMENTS = "🏆 <b>Pick your tournaments</b>\nTap to select as many as you like, then <b>Next</b>."
+ONB_OPTIONS = ("🔔 <b>Alert settings</b>\nChoose which alerts you want and how early to be "
+               "reminded, then <b>Review</b>.")
+ONB_CANCELLED = "Setup cancelled — nothing was saved. Send /subscribe to start again."
+ONB_EXPIRED = "This menu expired. Send /subscribe to start again."
+
+
+def onb_teams_text(competition: str, *, has_roster: bool) -> str:
+    if not has_roster:
+        return (f"⚽ <b>{competition}</b>\nI can't load the team list right now — tap "
+                "<b>⭐ All teams</b> to follow the whole competition, then <b>Done</b>.")
+    return (f"⚽ <b>{competition}</b>\nPick the teams to follow (or <b>⭐ All teams</b>), "
+            "then <b>Done</b>.")
+
+
+def onb_confirm_text(lines: list[str]) -> str:
+    return "\n".join(["📋 <b>Confirm your subscription</b>", ""] + lines)
+
+
+def onboarding_done_text(n: int) -> str:
+    teams = f"{n} team{'s' if n != 1 else ''}"
+    return (f"🎉 You're all set — following {teams}.\n\n"
+            "I'll send alerts as matches approach. Use /subscribe to add more, "
+            "/pause to mute, or /help to see everything.")
 
 
 STOP_CONFIRM = (

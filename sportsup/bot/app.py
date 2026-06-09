@@ -63,11 +63,9 @@ def _setup_delivery(
     *, every_minutes: int,
 ) -> None:
     """Register the repeating multi-user delivery job, if we have data + a sender."""
-    from ..catalog import league_map
     from ..mux_delivery import run_delivery_cycle
-    from ..providers.router import build_router
 
-    router = build_router(secrets, league_map=league_map())
+    router = application.bot_data.get("router")
     if router is None:
         logger.warning("delivery loop OFF: no data-provider credentials (inbound only). "
                        "Set FOOTBALL_DATA_API_KEY in .env to enable alerts.")
@@ -106,6 +104,15 @@ def build_application(
     application = Application.builder().token(token).post_init(_post_init).build()
     application.bot_data["state_store"] = store
     application.bot_data["sub_store"] = SubscriberStore(store)
+    application.bot_data["config"] = config
+    application.bot_data["secrets"] = secrets
+    # A data router (if creds exist) powers onboarding's team rosters AND the delivery
+    # loop — built once and shared.
+    if secrets is not None:
+        from ..catalog import league_map
+        from ..providers.router import build_router
+
+        application.bot_data["router"] = build_router(secrets, league_map=league_map())
     register_handlers(application)
     if deliver and config is not None and secrets is not None:
         _setup_delivery(application, db_path, config, secrets, every_minutes=delivery_minutes)

@@ -58,7 +58,7 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup migrate-config` | Import `config.yaml` into the DB as subscriber #1 (multi-user) |
 | `python -m sportsup subscribers` | List subscribers and the teams/tournaments they follow (no network) |
 | `python -m sportsup subs-plan` | Multi-user dry-run: preview each subscriber's alerts (one fetch per competition) |
-| `python -m sportsup bot` | Run the multi-user Telegram bot (long polling): `/start`, `/help`, `/stop` |
+| `python -m sportsup bot` | Run the multi-user Telegram bot: guided `/subscribe` onboarding, `/help`, `/stop`, + delivery loop |
 | `python -m sportsup run` | Start the always-on runtime (fixture sync + reminders + result polling) |
 | `python -m sportsup run --once` | Run a single sync/fire/poll cycle and exit (cron-style) |
 

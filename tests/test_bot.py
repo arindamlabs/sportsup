@@ -21,7 +21,7 @@ def test_help_lists_every_command():
 
 
 def test_active_commands_are_the_wired_ones():
-    assert {c.name for c in texts.active_commands()} == {"start", "help", "stop"}
+    assert {c.name for c in texts.active_commands()} == {"start", "help", "subscribe", "stop"}
     # Inactive ones are flagged "coming soon" in /help, not in the menu.
     assert "coming soon" in texts.help_text()
 
@@ -72,7 +72,8 @@ class FakeUpdate:
 
 class FakeContext:
     def __init__(self, store):
-        self.application = SimpleNamespace(bot_data={"sub_store": store})
+        self.application = SimpleNamespace(bot_data={"sub_store": store, "router": None})
+        self.user_data = {}
 
 
 class FakeCallbackUpdate:
@@ -138,6 +139,6 @@ def test_stop_cancel_keeps_data(tmp_path):
 
 def test_build_application_registers_handlers(tmp_path):
     app = build_application("123456789:AA-fake-token-for-tests", str(tmp_path / "s.sqlite"))
-    # All seven handlers (3 commands + callback + greeting + 2 catch-alls) in group 0.
-    assert len(app.handlers[0]) == 7
+    # 4 commands + 2 callback handlers + greeting + 2 catch-alls = 9, all in group 0.
+    assert len(app.handlers[0]) == 9
     assert "sub_store" in app.bot_data

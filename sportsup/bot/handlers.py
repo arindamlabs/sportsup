@@ -18,7 +18,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import service, texts
+from . import onboarding, service, texts
 
 logger = logging.getLogger("sportsup.bot")
 
@@ -37,6 +37,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _sub, created = service.ensure_subscriber(_store(context), chat_id)
     logger.info("/start from %s (created=%s)", chat_id, created)
     await update.effective_message.reply_html(texts.welcome_text(created=created))
+    # A brand-new user goes straight into guided setup; returning users get the
+    # welcome above (they can re-run setup anytime with /subscribe).
+    if created:
+        await onboarding.start_onboarding(update, context)
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -83,8 +87,10 @@ def register_handlers(application) -> None:
     update within the group, first match wins)."""
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
+    application.add_handler(CommandHandler("subscribe", onboarding.start_onboarding))
     application.add_handler(CommandHandler("stop", cmd_stop))
     application.add_handler(CallbackQueryHandler(on_stop_callback, pattern=r"^stop:"))
+    application.add_handler(CallbackQueryHandler(onboarding.on_callback, pattern=r"^o:"))
     application.add_handler(MessageHandler(filters.Regex(_GREETING_RE) & ~filters.COMMAND, on_greeting))
     # Catch-alls (added last so real commands/greetings win).
     application.add_handler(MessageHandler(filters.COMMAND, on_unknown))
