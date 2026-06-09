@@ -6,6 +6,10 @@
 # Local config may contain personal data; commit only the example
 config.yaml
 
+# Host-local Compose override (e.g. the run->bot cutover); never commit
+docker-compose.override.yml
+docker-compose.override.yaml
+
 # State / data store
 data/
 *.sqlite

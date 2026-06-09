@@ -141,13 +141,39 @@ for inbound-only). It needs `TELEGRAM_BOT_TOKEN` and `FOOTBALL_DATA_API_KEY` in 
 
 Run **one** of `run` or `bot` for a given person — never both at once. They use different
 dedup namespaces (`world-cup-2026:…` vs `<chat_id>:…`), so running both double-sends to you.
+Do the cutover at a **quiet time** (no watched match within the hour): the bot may re-send
+one or two very recent alerts that `run` already delivered, since their dedup keys differ.
 
-1. `sportsup migrate-config` — imports `config.yaml` as subscriber #1 (idempotent).
-2. Stop the `run` service/container.
-3. Start `bot` (e.g. swap the compose `command:` from `["run"]` to `["bot"]`).
-4. Verify with `sportsup subscribers` and `sportsup subs-plan`.
+The steps below use a Docker Compose **override file**, so the tracked `docker-compose.yml`
+is never edited (future `git pull`s stay clean; rollback is deleting one file). Replace
+`<user>@<vm-ip>` and paths with your own; run these in the repo directory on the host.
 
-To roll back, stop `bot` and start `run` again — `config.yaml` is untouched by migration.
+1. **Update + secrets.** `git pull`, then make sure `.env` has `TELEGRAM_BOT_TOKEN`,
+   `FOOTBALL_DATA_API_KEY`, and `SPORTSUP_DRY_RUN=false`. (Add `DASHBOARD_PASSWORD` too if
+   you'll run the dashboard — see below.)
+2. **Migrate** your single-user config into the DB as subscriber #1 (idempotent):
+   ```bash
+   docker compose run --rm sportsup migrate-config
+   docker compose run --rm sportsup subscribers      # verify the import
+   ```
+3. **Switch `run` → `bot`** without touching the tracked file:
+   ```bash
+   cat > docker-compose.override.yml <<'YAML'
+   services:
+     sportsup:
+       command: ["bot"]
+   YAML
+   ```
+4. **Recreate** (rebuilds for new code/deps):
+   ```bash
+   docker compose up -d --build
+   docker compose logs -f sportsup        # expect "bot @… ready", "delivery loop ON"
+   ```
+5. **Verify:** message the bot (`/help`, `/mysubs`); optionally
+   `docker compose run --rm sportsup subs-plan` to preview without sending.
+
+**Rollback** (anytime): `rm docker-compose.override.yml && docker compose up -d` — the bot
+stops and single-user `run` resumes. `config.yaml` is untouched by migration.
 
 ## Admin dashboard
 
