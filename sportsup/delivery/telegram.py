@@ -1,8 +1,9 @@
 """Telegram Bot API sender.
 
 Free, official, no payment method / template approval / 24h-window — ideal for personal
-alerts. Sends via the Bot API ``/sendMessage``. The recipient is the bot's configured
-``chat_id`` (set once via env), so ``OutboundMessage.recipient`` is ignored here.
+alerts. Sends via the Bot API ``/sendMessage``. ``OutboundMessage.recipient`` selects the
+target chat (so one sender serves every subscriber in the multi-user bot); it falls back
+to the bot's configured default ``chat_id`` when a message carries no recipient.
 
 Messages are sent as HTML (Telegram renders *bold*/_italic_ from format_alert as <b>/<i>).
 """
@@ -37,8 +38,9 @@ class TelegramSender(WhatsAppSender):
 
     def send(self, message: OutboundMessage) -> SendResult:
         text = message.text or ""
+        chat_id = message.recipient or self._chat_id  # per-message target; default for single-user
         payload = {
-            "chat_id": self._chat_id,
+            "chat_id": chat_id,
             "text": _to_html(text),
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
@@ -51,7 +53,7 @@ class TelegramSender(WhatsAppSender):
         data = resp.data or {}
         if resp.status_code == 200 and data.get("ok"):
             msg_id = str((data.get("result") or {}).get("message_id", ""))
-            logger.info("sent Telegram message %s to chat %s", msg_id, self._chat_id)
+            logger.info("sent Telegram message %s to chat %s", msg_id, chat_id)
             return SendResult(ok=True, provider=self.name, provider_message_id=msg_id, raw=data)
 
         err = data.get("description") if isinstance(data, dict) else None

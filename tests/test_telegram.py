@@ -30,11 +30,25 @@ def test_telegram_send_success_uses_chat_id_and_html():
         captured.update(json.loads(req.content))
         return httpx.Response(200, json={"ok": True, "result": {"message_id": 42}})
 
-    res = _sender(handler).send(OutboundMessage(recipient="ignored", text="*UPSET!* _wow_"))
+    # No recipient -> falls back to the sender's default chat id (single-user).
+    res = _sender(handler).send(OutboundMessage(recipient="", text="*UPSET!* _wow_"))
     assert res.ok and res.provider == "telegram" and res.provider_message_id == "42"
-    assert captured["chat_id"] == "99887766"          # sender's chat id, not message.recipient
+    assert captured["chat_id"] == "99887766"          # default chat id used
     assert captured["parse_mode"] == "HTML"
     assert "<b>UPSET!</b>" in captured["text"] and "<i>wow</i>" in captured["text"]
+
+
+def test_telegram_send_routes_to_message_recipient():
+    # Multi-user: each message targets its own chat via recipient (overrides default).
+    captured = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        import json
+        captured.update(json.loads(req.content))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 7}})
+
+    res = _sender(handler).send(OutboundMessage(recipient="12345", text="hi"))
+    assert res.ok and captured["chat_id"] == "12345"  # message recipient, not the default
 
 
 def test_telegram_send_surfaces_error():

@@ -531,16 +531,20 @@ def cmd_subs_plan(args, logger) -> int:
 
 
 def cmd_bot(args, logger) -> int:
-    """Run the multi-user Telegram bot (long polling). Listens for /start, /help,
-    /stop, etc. and manages subscribers in the DB. Blocks until interrupted."""
+    """Run the multi-user Telegram bot (long polling). Handles inbound (/start,
+    /help, /stop, …) AND runs the multi-user delivery loop. Blocks until interrupted."""
+    config = load_config(args.config)
     secrets = Secrets()
     if not secrets.telegram_bot_token:
         logger.error("Set TELEGRAM_BOT_TOKEN in .env to run the bot.")
         return 2
     from .bot.app import run_bot
 
-    logger.info("Starting SportsUp Telegram bot (long polling). Ctrl-C to stop.")
-    run_bot(secrets.telegram_bot_token, args.db)
+    deliver = not args.no_deliver
+    logger.info("Starting SportsUp Telegram bot (long polling, delivery=%s). Ctrl-C to stop.",
+                "on" if deliver else "off")
+    run_bot(secrets.telegram_bot_token, args.db, config=config, secrets=secrets,
+            deliver=deliver, delivery_minutes=args.deliver_every)
     return 0
 
 
@@ -607,8 +611,12 @@ def build_parser() -> argparse.ArgumentParser:
                                  help="multi-user dry-run: preview each subscriber's alerts")
     p_subs_plan.add_argument("--results-days", type=int, default=3,
                              help="how far back to scan for finished matches")
-    sub.add_parser("bot", parents=[common],
-                   help="run the multi-user Telegram bot (long polling)")
+    p_bot = sub.add_parser("bot", parents=[common],
+                           help="run the multi-user Telegram bot (inbound + delivery)")
+    p_bot.add_argument("--no-deliver", action="store_true",
+                       help="inbound only — don't run the alert delivery loop")
+    p_bot.add_argument("--deliver-every", type=int, default=5, metavar="MIN",
+                       help="minutes between delivery cycles (default: 5)")
     p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
     p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
