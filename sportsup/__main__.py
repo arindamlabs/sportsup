@@ -16,12 +16,15 @@ import argparse
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import __version__
 from .alerts import AlertEngine
 from .alerts.models import Alert, AlertType
+from .catalog import competition_name, league_map
 from .config import AppConfig, load_config
 from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert, message_for_alert
+from .fanout import plan_for_all_subscribers
 from .logging_setup import setup_logging
 from .pipeline import gather_result_alerts, plan_all_reminders
 from .providers import Fixture, MatchStatus, TeamRef
@@ -29,6 +32,7 @@ from .providers.router import build_router
 from .runtime import SchedulerRuntime
 from .settings import Secrets
 from .state import StateStore
+from .subscribers import ALL_TEAMS, SubscriberStore, import_single_user
 from .sync import collect_watched_fixtures
 
 DEFAULT_CONFIG = "config.yaml"
@@ -133,6 +137,18 @@ def _build_router_or_warn(secrets: Secrets, config: AppConfig, logger):
         if e.api_football_league is not None
     }
     router = build_router(secrets, league_map=league_map or None)
+    if router is None:
+        logger.error(
+            "No data-provider credentials found. Set FOOTBALL_DATA_API_KEY (and "
+            "optionally API_FOOTBALL_KEY) in .env. See .env.example."
+        )
+    return router
+
+
+def _build_multiuser_router_or_warn(secrets: Secrets, logger):
+    """Like `_build_router_or_warn` but the odds league-map covers the whole free
+    catalog, since any subscriber may watch any competition (not just config.yaml's)."""
+    router = build_router(secrets, league_map=league_map())
     if router is None:
         logger.error(
             "No data-provider credentials found. Set FOOTBALL_DATA_API_KEY (and "
@@ -424,6 +440,96 @@ def cmd_status(args, logger) -> int:
     return 0
 
 
+def _format_teams(teams: list[str]) -> str:
+    return "ALL teams" if not teams or teams == [ALL_TEAMS] else ", ".join(teams)
+
+
+def cmd_migrate_config(args, logger) -> int:
+    """Import the single-user config.yaml into the DB as subscriber #1 (Phase 7).
+    Idempotent — safe to re-run. The live single-user runtime is untouched."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    chat_id = _active_recipient(config, secrets)
+    if not chat_id:
+        if config.delivery.provider == "telegram":
+            logger.error("Set TELEGRAM_CHAT_ID in .env — it's the chat_id for subscriber #1.")
+        else:
+            logger.error("Set WHATSAPP_RECIPIENT in .env — it's the recipient for subscriber #1.")
+        return 2
+
+    store = StateStore(args.db)
+    sub_store = SubscriberStore(store)
+    sub, added = import_single_user(sub_store, config, chat_id)
+    logger.info("Migrated config.yaml into the DB as subscriber '%s'.", sub.chat_id)
+    logger.info("  timezone=%s  quiet=%s(%s-%s)  leads=%s", sub.timezone,
+                "on" if sub.quiet_enabled else "off", sub.quiet_start, sub.quiet_end,
+                ",".join(sub.lead_times))
+    logger.info("  alerts: reminders=%s upsets=%s finals=%s",
+                sub.reminders_enabled, sub.upsets_enabled, sub.finals_enabled)
+    subs = sub_store.list_subscriptions(chat_id)
+    logger.info("  %d subscription(s) (%d newly added this run):", len(subs), added)
+    for code, season in sorted({(s.competition_code, s.season) for s in subs}):
+        teams = [s.team for s in subs if s.competition_code == code and s.season == season]
+        logger.info("    %-4s %s  %s", code, season, _format_teams(teams))
+    store.close()
+    return 0
+
+
+def cmd_subscribers(args, logger) -> int:
+    """List subscribers and their subscriptions (read-only, no network)."""
+    store = StateStore(args.db)
+    sub_store = SubscriberStore(store)
+    subscribers = sub_store.list_subscribers()
+    logger.info("Subscribers (%d):", len(subscribers))
+    for sub in subscribers:
+        logger.info("-" * 60)
+        logger.info("  %s  [%s]  tz=%s", sub.chat_id, sub.status, sub.timezone)
+        logger.info("    alerts: reminders=%s upsets=%s finals=%s  leads=%s",
+                    sub.reminders_enabled, sub.upsets_enabled, sub.finals_enabled,
+                    ",".join(sub.lead_times))
+        subs = sub_store.list_subscriptions(sub.chat_id)
+        for code, season in sorted({(s.competition_code, s.season) for s in subs}):
+            teams = [s.team for s in subs if s.competition_code == code and s.season == season]
+            logger.info("    %-4s %s  %s — %s", code, season, competition_name(code),
+                        _format_teams(teams))
+    if not subscribers:
+        logger.info("  (none yet — run `migrate-config`, or onboard via the bot in Phase 8+)")
+    store.close()
+    return 0
+
+
+def cmd_subs_plan(args, logger) -> int:
+    """Dry-run preview of the multi-user fan-out: what each subscriber WOULD be
+    alerted about right now. Fetches each competition once. Marks nothing as sent."""
+    config = load_config(args.config)
+    secrets = Secrets()
+    router = _build_multiuser_router_or_warn(secrets, logger)
+    if router is None:
+        return 2
+    store = StateStore(args.db)
+    sub_store = SubscriberStore(store)
+    now = datetime.now(timezone.utc)
+
+    plans = plan_for_all_subscribers(
+        config, router, store, sub_store, now=now, lookback_days=args.results_days,
+    )
+    total = 0
+    for plan in plans:
+        sub = plan.subscriber
+        tz = ZoneInfo(sub.timezone)
+        logger.info("=" * 60)
+        logger.info("Subscriber %s (%s) — %d alert(s)", sub.chat_id, sub.timezone, len(plan.alerts))
+        for a in sorted(plan.alerts, key=lambda x: x.scheduled_for or now):
+            when = a.scheduled_for.astimezone(tz).strftime("%a %d %b %H:%M %Z") if a.scheduled_for else "now"
+            logger.info("  [%s] %s  %s", a.type.value, when, a.summary)
+        total += len(plan.alerts)
+    logger.info("=" * 60)
+    logger.info("Dry-run: %d subscriber(s), %d alert(s) total. Nothing sent or marked.",
+                len(plans), total)
+    store.close()
+    return 0
+
+
 def cmd_run(args, logger) -> int:
     """Start the always-on scheduling runtime (or a single cycle with --once)."""
     config = load_config(args.config)
@@ -479,6 +585,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_test = sub.add_parser("test-send", parents=[common], help="send one real sample alert via the configured provider (ignores dry_run)")
     p_test.add_argument("--type", choices=["reminder", "final", "upset"], default="upset",
                         help="which sample alert to send (default: upset)")
+    sub.add_parser("migrate-config", parents=[common],
+                   help="import config.yaml into the DB as subscriber #1 (multi-user)")
+    sub.add_parser("subscribers", parents=[common],
+                   help="list subscribers and their subscriptions (no network)")
+    p_subs_plan = sub.add_parser("subs-plan", parents=[common],
+                                 help="multi-user dry-run: preview each subscriber's alerts")
+    p_subs_plan.add_argument("--results-days", type=int, default=3,
+                             help="how far back to scan for finished matches")
     p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
     p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
@@ -499,6 +613,9 @@ def main(argv: list[str] | None = None) -> int:
         "notify": cmd_notify,
         "status": cmd_status,
         "test-send": cmd_test_send,
+        "migrate-config": cmd_migrate_config,
+        "subscribers": cmd_subscribers,
+        "subs-plan": cmd_subs_plan,
         "run": cmd_run,
     }
     try:

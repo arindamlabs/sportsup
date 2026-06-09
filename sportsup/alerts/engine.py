@@ -24,10 +24,18 @@ OddsLookup = Callable[[MatchResult], "MatchOdds | None"]
 
 
 class AlertEngine:
-    def __init__(self, config: AppConfig, store: StateStore) -> None:
+    def __init__(self, config: AppConfig, store: StateStore, *, dedup_prefix: str = "") -> None:
         self.config = config
         self.store = store
         self.tz = config.tzinfo
+        # Prepended to every dedup_key so multi-user installs namespace per chat_id
+        # (e.g. "12345:"). Empty by default → single-user keys are byte-identical to
+        # before, so an existing deployment's dedup history keeps working.
+        self.dedup_prefix = dedup_prefix
+
+    def _key(self, suffix: str) -> str:
+        """Namespaced dedup key (per-user prefix + the stable suffix)."""
+        return f"{self.dedup_prefix}{suffix}"
 
     # --- reminders --------------------------------------------------------
 
@@ -57,7 +65,7 @@ class AlertEngine:
                     Alert(
                         type=AlertType.FIXTURE_REMINDER,
                         event_id=event.id,
-                        dedup_key=f"{event.id}:{fx.stable_id()}:reminder:{lead_label}",
+                        dedup_key=self._key(f"{event.id}:{fx.stable_id()}:reminder:{lead_label}"),
                         fixture=fx,
                         scheduled_for=fire_at,
                         lead_label=lead_label,
@@ -90,7 +98,7 @@ class AlertEngine:
                     Alert(
                         type=AlertType.FINAL_SCORE,
                         event_id=event.id,
-                        dedup_key=f"{event.id}:{fx.stable_id()}:final",
+                        dedup_key=self._key(f"{event.id}:{fx.stable_id()}:final"),
                         fixture=fx,
                         summary=self._final_summary(r),
                         context={**self._fixture_context(event, fx),
@@ -106,7 +114,7 @@ class AlertEngine:
                         Alert(
                             type=AlertType.SHOCK_RESULT,
                             event_id=event.id,
-                            dedup_key=f"{event.id}:{fx.stable_id()}:shock",
+                            dedup_key=self._key(f"{event.id}:{fx.stable_id()}:shock"),
                             fixture=fx,
                             summary=self._shock_summary(r, ev),
                             context={

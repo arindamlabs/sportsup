@@ -34,6 +34,36 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- Multi-user (Phase 7): one row per Telegram user, plus their watched
+-- (competition, season, team) tuples. Single-user installs simply have one
+-- subscriber. `dedup_key` in sent_alerts is namespaced by chat_id so users
+-- never share dedup state.
+CREATE TABLE IF NOT EXISTS subscribers (
+    chat_id          TEXT PRIMARY KEY,
+    timezone         TEXT NOT NULL DEFAULT 'UTC',
+    quiet_enabled    INTEGER NOT NULL DEFAULT 1,
+    quiet_start      TEXT NOT NULL DEFAULT '22:00',
+    quiet_end        TEXT NOT NULL DEFAULT '07:00',
+    quiet_behavior   TEXT NOT NULL DEFAULT 'defer',
+    reminders_enabled INTEGER NOT NULL DEFAULT 1,
+    upsets_enabled   INTEGER NOT NULL DEFAULT 1,
+    finals_enabled   INTEGER NOT NULL DEFAULT 0,
+    lead_times       TEXT NOT NULL DEFAULT '1d,1h',
+    status           TEXT NOT NULL DEFAULT 'active',  -- active | paused
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    chat_id          TEXT NOT NULL,
+    competition_code TEXT NOT NULL,
+    season           INTEGER NOT NULL,
+    team             TEXT NOT NULL,   -- canonical team name; '*' = all teams
+    created_at       TEXT NOT NULL,
+    PRIMARY KEY (chat_id, competition_code, season, team),
+    FOREIGN KEY (chat_id) REFERENCES subscribers(chat_id) ON DELETE CASCADE
+);
 """
 
 
@@ -53,6 +83,12 @@ class StateStore:
         self._conn.execute("PRAGMA foreign_keys=ON;")
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        """The underlying connection, shared with sibling stores (e.g. SubscriberStore)
+        so the whole app uses one DB file, one transaction scope, and FK cascades work."""
+        return self._conn
 
     @contextmanager
     def _tx(self) -> Iterator[sqlite3.Connection]:
