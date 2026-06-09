@@ -530,6 +530,20 @@ def cmd_subs_plan(args, logger) -> int:
     return 0
 
 
+def cmd_bot(args, logger) -> int:
+    """Run the multi-user Telegram bot (long polling). Listens for /start, /help,
+    /stop, etc. and manages subscribers in the DB. Blocks until interrupted."""
+    secrets = Secrets()
+    if not secrets.telegram_bot_token:
+        logger.error("Set TELEGRAM_BOT_TOKEN in .env to run the bot.")
+        return 2
+    from .bot.app import run_bot
+
+    logger.info("Starting SportsUp Telegram bot (long polling). Ctrl-C to stop.")
+    run_bot(secrets.telegram_bot_token, args.db)
+    return 0
+
+
 def cmd_run(args, logger) -> int:
     """Start the always-on scheduling runtime (or a single cycle with --once)."""
     config = load_config(args.config)
@@ -593,6 +607,8 @@ def build_parser() -> argparse.ArgumentParser:
                                  help="multi-user dry-run: preview each subscriber's alerts")
     p_subs_plan.add_argument("--results-days", type=int, default=3,
                              help="how far back to scan for finished matches")
+    sub.add_parser("bot", parents=[common],
+                   help="run the multi-user Telegram bot (long polling)")
     p_run = sub.add_parser("run", parents=[common], help="start the always-on scheduling runtime")
     p_run.add_argument("--once", action="store_true", help="run a single sync/fire/poll cycle and exit (cron-style)")
     return parser
@@ -616,6 +632,7 @@ def main(argv: list[str] | None = None) -> int:
         "migrate-config": cmd_migrate_config,
         "subscribers": cmd_subscribers,
         "subs-plan": cmd_subs_plan,
+        "bot": cmd_bot,
         "run": cmd_run,
     }
     try:
