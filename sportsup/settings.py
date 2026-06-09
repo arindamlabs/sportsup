@@ -31,6 +31,10 @@ class Secrets(BaseSettings):
     # Global override for delivery.dry_run; None means "use config value".
     dry_run_override: bool | None = Field(None, alias="SPORTSUP_DRY_RUN")
 
+    # Admin dashboard (read-only). Password is REQUIRED to start the dashboard.
+    dashboard_user: str = Field("admin", alias="DASHBOARD_USER")
+    dashboard_password: str | None = Field(None, alias="DASHBOARD_PASSWORD")
+
     def configured_providers(self) -> dict[str, bool]:
         """Which integrations have credentials present (for the status banner)."""
         return {

@@ -74,6 +74,9 @@ def run_delivery_cycle(
             else:  # "defer" (quiet hours) or "wait" (lead window not reached) — leave it
                 stats.deferred += 1
 
+    # Record the cycle for the admin dashboard / status views.
+    store.set_meta("last_delivery_utc", now.isoformat())
+    store.set_meta("last_delivery_stats", str(stats))
     if stats.sent or stats.failed:
         logger.info("delivery cycle: %s", stats)
     else:

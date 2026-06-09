@@ -148,3 +148,29 @@ dedup namespaces (`world-cup-2026:…` vs `<chat_id>:…`), so running both doub
 4. Verify with `sportsup subscribers` and `sportsup subs-plan`.
 
 To roll back, stop `bot` and start `run` again — `config.yaml` is untouched by migration.
+
+## Admin dashboard
+
+`python -m sportsup dashboard` serves a read-only view of subscribers, their tournaments
+and teams, and popularity aggregates. It **binds to localhost** and requires
+`DASHBOARD_PASSWORD` in `.env` (it refuses to start without one).
+
+**Access it (never expose it publicly):**
+```bash
+ssh -L 8080:127.0.0.1:8080 <user>@<vm-ip>   # tunnel the VM's localhost:8080 to yours
+# then browse http://localhost:8080  (Basic auth: DASHBOARD_USER / DASHBOARD_PASSWORD)
+```
+
+**Run it on the VM** alongside the bot (optional compose service, published only on the
+host loopback):
+```bash
+docker compose up -d dashboard
+```
+
+Notes:
+- Read-only — it issues only `SELECT`s and shares the SQLite DB with the bot (WAL allows
+  concurrent reads). The `./data` mount stays OS-writable because SQLite WAL needs its
+  `-wal`/`-shm` files, but the app never writes.
+- JSON endpoints `/api/overview` and `/api/subscribers` (same auth) for scripting.
+- Keep it off public ports. The Oracle VCN security list does **not** need an ingress rule
+  for 8080 — the SSH tunnel is the access path.

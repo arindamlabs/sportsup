@@ -43,6 +43,22 @@ Data is fetched **once per competition** and fanned out to every subscriber, so 
 users adds no API calls. Each user gets their own timezone, quiet hours, alert toggles,
 lead-times, and a per-user dedup key. Cutover from single-user is in [`RUNBOOK.md`](RUNBOOK.md).
 
+### Admin dashboard (owner-only)
+
+A read-only web view of who's subscribed and what they follow:
+
+```bash
+python -m sportsup dashboard          # binds to 127.0.0.1:8080 (needs DASHBOARD_PASSWORD)
+# from your laptop:
+ssh -L 8080:127.0.0.1:8080 <user>@<vm-ip>
+# then open http://localhost:8080
+```
+
+It binds to **localhost only** — nothing is exposed to the internet; you reach it through
+an SSH tunnel, with HTTP Basic auth (`DASHBOARD_USER`/`DASHBOARD_PASSWORD`) as a second
+layer. Shows overview counts, a per-user table (tournaments → teams, alerts, timezone),
+and popularity aggregates. JSON at `/api/overview` and `/api/subscribers`.
+
 ## Quick start (WSL2)
 
 ```bash

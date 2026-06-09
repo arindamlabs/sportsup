@@ -16,3 +16,21 @@ services:
     # (set SPORTSUP_DRY_RUN=false in .env / delivery.dry_run: false in config.yaml).
     command: ["run"]
     restart: unless-stopped
+
+  # Read-only admin dashboard. Bound to localhost only — reach it from your laptop with
+  #   ssh -L 8080:127.0.0.1:8080 <user>@<vm-ip>
+  # then open http://localhost:8080. Needs DASHBOARD_PASSWORD in .env. Optional service:
+  #   docker compose up -d dashboard
+  dashboard:
+    build: .
+    image: sportsup:0.1.0
+    container_name: sportsup-dashboard
+    env_file:
+      - .env
+    volumes:
+      # OS-writable (SQLite WAL needs -wal/-shm), but the app only ever reads.
+      - ./data:/app/data
+    command: ["dashboard", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "127.0.0.1:8080:8080"   # published only on the host's loopback
+    restart: unless-stopped

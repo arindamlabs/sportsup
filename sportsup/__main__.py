@@ -530,6 +530,25 @@ def cmd_subs_plan(args, logger) -> int:
     return 0
 
 
+def cmd_dashboard(args, logger) -> int:
+    """Run the read-only admin dashboard (binds to localhost; reach it via SSH tunnel).
+    Requires DASHBOARD_PASSWORD in .env so it can never start wide-open."""
+    secrets = Secrets()
+    if not secrets.dashboard_password:
+        logger.error("Set DASHBOARD_PASSWORD in .env to run the dashboard (it won't start without one).")
+        return 2
+    from .dashboard.app import run_dashboard
+
+    logger.info("Dashboard on http://%s:%d — tunnel in with:  ssh -L %d:127.0.0.1:%d <user>@<vm-ip>",
+                args.host, args.port, args.port, args.port)
+    if args.host not in ("127.0.0.1", "localhost"):
+        logger.warning("Binding to %s exposes the dashboard beyond localhost — make sure that's intended.",
+                       args.host)
+    run_dashboard(args.db, args.host, args.port,
+                  user=secrets.dashboard_user, password=secrets.dashboard_password)
+    return 0
+
+
 def cmd_bot(args, logger) -> int:
     """Run the multi-user Telegram bot (long polling). Handles inbound (/start,
     /help, /stop, …) AND runs the multi-user delivery loop. Blocks until interrupted."""
@@ -611,6 +630,10 @@ def build_parser() -> argparse.ArgumentParser:
                                  help="multi-user dry-run: preview each subscriber's alerts")
     p_subs_plan.add_argument("--results-days", type=int, default=3,
                              help="how far back to scan for finished matches")
+    p_dash = sub.add_parser("dashboard", parents=[common],
+                            help="run the read-only admin dashboard (localhost; SSH-tunnel in)")
+    p_dash.add_argument("--host", default="127.0.0.1", help="bind address (default: 127.0.0.1)")
+    p_dash.add_argument("--port", type=int, default=8080, help="port (default: 8080)")
     p_bot = sub.add_parser("bot", parents=[common],
                            help="run the multi-user Telegram bot (inbound + delivery)")
     p_bot.add_argument("--no-deliver", action="store_true",
@@ -640,6 +663,7 @@ def main(argv: list[str] | None = None) -> int:
         "migrate-config": cmd_migrate_config,
         "subscribers": cmd_subscribers,
         "subs-plan": cmd_subs_plan,
+        "dashboard": cmd_dashboard,
         "bot": cmd_bot,
         "run": cmd_run,
     }

@@ -226,6 +226,26 @@ class SubscriberStore:
             for r in rows
         ]
 
+    def subscription_count(self) -> int:
+        return self.conn.execute("SELECT COUNT(*) FROM subscriptions").fetchone()[0]
+
+    def competition_popularity(self) -> list[tuple[str, int]]:
+        """(competition_code, distinct-subscriber count), most-followed first."""
+        rows = self.conn.execute(
+            "SELECT competition_code, COUNT(DISTINCT chat_id) AS n FROM subscriptions "
+            "GROUP BY competition_code ORDER BY n DESC, competition_code"
+        ).fetchall()
+        return [(r["competition_code"], r["n"]) for r in rows]
+
+    def team_popularity(self, limit: int = 20) -> list[tuple[str, int]]:
+        """(team, distinct-subscriber count) excluding the ALL_TEAMS sentinel."""
+        rows = self.conn.execute(
+            "SELECT team, COUNT(DISTINCT chat_id) AS n FROM subscriptions "
+            "WHERE team != ? GROUP BY team ORDER BY n DESC, team LIMIT ?",
+            (ALL_TEAMS, limit),
+        ).fetchall()
+        return [(r["team"], r["n"]) for r in rows]
+
     def active_competitions(self) -> set[tuple[str, int]]:
         """Distinct (competition_code, season) watched by any ACTIVE subscriber —
         the set the fan-out planner fetches once each. Paused users are excluded."""
