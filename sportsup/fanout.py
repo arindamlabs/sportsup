@@ -49,13 +49,18 @@ class CompetitionData:
     error: str | None = None
     _odds: dict[str, MatchOdds | None] = field(default_factory=dict)
 
-    def odds_lookup(self, router: ProviderRouter):
+    def odds_lookup(self, router: ProviderRouter, *, budget=None, now: datetime | None = None):
         """A per-match-cached odds lookup. Multiple users watching the same match
-        trigger at most one real API call (protecting the odds budget)."""
+        trigger at most one real API call. When an ``OddsBudget`` is supplied, a call
+        is made only if the daily cap allows — otherwise we return None and the engine
+        uses its standings/form fallback."""
 
         def lookup(result: MatchResult) -> MatchOdds | None:
             key = result.fixture.stable_id()
             if key not in self._odds:
+                if budget is not None and not budget.try_consume(now or datetime.now(timezone.utc)):
+                    self._odds[key] = None   # budget spent — fall back to standings
+                    return None
                 try:
                     self._odds[key] = router.get_match_odds(
                         competition_code=self.code, season=self.season,
@@ -130,7 +135,7 @@ def _event_for(sub: Subscriber, subs: list[Subscription], code: str, season: int
 def plan_for_subscriber(
     sub: Subscriber, subs: list[Subscription], base_config: AppConfig, store: StateStore,
     comp_data: dict[tuple[str, int], CompetitionData], router: ProviderRouter, now: datetime,
-    *, include_past: bool,
+    *, include_past: bool, odds_budget=None,
 ) -> list[Alert]:
     """All unsent alerts owed to one subscriber, drawn from the shared competition data."""
     alerts: list[Alert] = []
@@ -159,7 +164,9 @@ def plan_for_subscriber(
             standings = data.standings if sub.upsets_enabled else None
             alerts.extend(engine.unsent(
                 engine.evaluate_results(
-                    event, mine, odds_lookup=data.odds_lookup(router), standings=standings
+                    event, mine,
+                    odds_lookup=data.odds_lookup(router, budget=odds_budget, now=now),
+                    standings=standings,
                 )
             ))
     return alerts
@@ -168,6 +175,7 @@ def plan_for_subscriber(
 def plan_for_all_subscribers(
     base_config: AppConfig, router: ProviderRouter, store: StateStore, sub_store: SubscriberStore,
     *, now: datetime | None = None, include_past: bool = False, lookback_days: int | None = None,
+    odds_budget=None,
 ) -> list[SubscriberPlan]:
     """Fetch every watched competition once, then build each active subscriber's alerts."""
     now = now or datetime.now(timezone.utc)
@@ -189,7 +197,8 @@ def plan_for_all_subscribers(
         if not subs:
             continue
         alerts = plan_for_subscriber(
-            sub, subs, base_config, store, comp_data, router, now, include_past=include_past
+            sub, subs, base_config, store, comp_data, router, now,
+            include_past=include_past, odds_budget=odds_budget,
         )
         plans.append(SubscriberPlan(subscriber=sub, alerts=alerts))
     return plans

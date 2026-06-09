@@ -21,6 +21,7 @@ from .config import AppConfig
 from .delivery import message_for_alert
 from .delivery.base import WhatsAppSender
 from .fanout import plan_for_all_subscribers
+from .odds_budget import OddsBudget
 from .providers.router import ProviderRouter
 from .runtime import classify_reminder, classify_result
 from .state import StateStore
@@ -45,11 +46,14 @@ class DeliveryStats:
 def run_delivery_cycle(
     base_config: AppConfig, router: ProviderRouter, store: StateStore,
     sub_store: SubscriberStore, sender: WhatsAppSender, *, now: datetime | None = None,
+    odds_budget: OddsBudget | None = None,
 ) -> DeliveryStats:
     """Plan + deliver one cycle of alerts across all active subscribers."""
     now = now or datetime.now(timezone.utc)
     stats = DeliveryStats()
-    plans = plan_for_all_subscribers(base_config, router, store, sub_store, now=now, include_past=True)
+    budget = odds_budget if odds_budget is not None else OddsBudget(store)
+    plans = plan_for_all_subscribers(
+        base_config, router, store, sub_store, now=now, include_past=True, odds_budget=budget)
 
     for plan in plans:
         sub = plan.subscriber

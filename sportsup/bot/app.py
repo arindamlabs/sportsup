@@ -100,12 +100,15 @@ def build_application(
     """Construct the Application with handlers + shared store. Network I/O (polling,
     post_init) happens in :func:`run_bot`. When ``deliver`` and config/secrets are
     supplied, the multi-user delivery job is registered too."""
+    from .ratelimit import RateLimiter
+
     store = StateStore(db_path)
     application = Application.builder().token(token).post_init(_post_init).build()
     application.bot_data["state_store"] = store
     application.bot_data["sub_store"] = SubscriberStore(store)
     application.bot_data["config"] = config
     application.bot_data["secrets"] = secrets
+    application.bot_data["ratelimiter"] = RateLimiter()
     # A data router (if creds exist) powers onboarding's team rosters AND the delivery
     # loop — built once and shared.
     if secrets is not None:

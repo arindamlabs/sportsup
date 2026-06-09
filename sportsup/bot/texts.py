@@ -26,12 +26,12 @@ COMMANDS: list[Command] = [
     Command("start", "Subscribe and see what SportsUp can do", True),
     Command("help", "Show every command and how it works", True),
     Command("subscribe", "Follow tournaments and teams (guided setup)", True),
-    Command("mysubs", "List the tournaments and teams you follow", False),
-    Command("unsubscribe", "Stop following a single team or tournament", False),
-    Command("edit", "Change your teams, alert types, or reminder timing", False),
-    Command("settings", "Set your timezone and quiet hours", False),
-    Command("pause", "Pause all alerts without losing your setup", False),
-    Command("resume", "Resume alerts after a pause", False),
+    Command("mysubs", "List the tournaments and teams you follow", True),
+    Command("edit", "Change your alert types and reminder timing", True),
+    Command("settings", "Set your timezone and quiet hours", True),
+    Command("unsubscribe", "Stop following a single team or tournament", True),
+    Command("pause", "Pause all alerts without losing your setup", True),
+    Command("resume", "Resume alerts after a pause", True),
     Command("stop", "Unsubscribe completely and delete your data", True),
 ]
 
@@ -112,3 +112,29 @@ STOP_CANCELLED = "👍 Cancelled — nothing was changed. You're still subscribe
 
 UNKNOWN_COMMAND = "I don't recognise that command. Send /help to see what I can do."
 GREETING_FALLBACK = "👋 Send /help to see what I can do, or /start to subscribe."
+
+# --- management (Phase 10) -------------------------------------------------
+
+NOT_SUBSCRIBED = "You're not subscribed yet. Send /start to set up your alerts."
+PAUSED = "⏸️ Alerts paused. Your setup is saved — send /resume to turn them back on."
+ALREADY_PAUSED = "Your alerts are already paused. Send /resume to turn them back on."
+RESUMED = "▶️ Alerts resumed. Welcome back!"
+ALREADY_ACTIVE = "Your alerts are already on. Use /pause if you want a break."
+
+EDIT_TITLE = "⚙️ <b>Edit alert settings</b>\nToggle alert types and reminder timing, then Save."
+EDIT_SAVED = "✅ Saved. Use /subscribe to add teams or /unsubscribe to remove them."
+EDIT_NUDGE = "To add or remove teams, use /subscribe or /unsubscribe."
+
+UNSUB_NONE = "You have no subscriptions to remove. Send /subscribe to add some."
+UNSUB_TITLE = "➖ <b>Unsubscribe</b>\nPick a tournament to edit, or remove it entirely."
+UNSUB_DONE = "Done. Send /mysubs to see what you're following."
+UNSUB_EMPTY = "You've removed everything. Send /subscribe to follow teams again."
+RATE_LIMITED = "🐢 You're sending messages very fast — give me a moment, then try again."
+
+SET_TZ_PROMPT = ("🕑 Send me your timezone as an <b>IANA name</b>, e.g. "
+                 "<code>America/Los_Angeles</code>, <code>Europe/London</code>, or "
+                 "<code>Asia/Kolkata</code>.")
+SET_TZ_INVALID = ("That doesn't look like a valid timezone. Use an IANA name like "
+                  "<code>Europe/Berlin</code> — see the 'TZ identifier' column on Wikipedia's "
+                  "list of tz database time zones.")
+SET_DONE = "⚙️ Settings saved. Send /mysubs to review everything."

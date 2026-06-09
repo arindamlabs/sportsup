@@ -121,5 +121,30 @@ If a team name isn't matched, `sportsup fixtures` warns "not found in the … te
 
 ## Backups
 
-The only state worth keeping is `data/sportsup.sqlite` (dedup history). Losing it could re-send recent
-alerts once. `config.yaml` and `.env` are your settings/secrets — back those up out of band.
+The only state worth keeping is `data/sportsup.sqlite` (dedup history + subscribers).
+Losing it could re-send recent alerts once and, for the bot, lose subscriber data.
+`config.yaml` and `.env` are your settings/secrets — back those up out of band.
+
+## Multi-user bot operations
+
+`python -m sportsup bot` is the multi-user service: it handles inbound commands **and**
+runs the delivery loop (every 5 min by default; `--deliver-every MIN`, or `--no-deliver`
+for inbound-only). It needs `TELEGRAM_BOT_TOKEN` and `FOOTBALL_DATA_API_KEY` in `.env`.
+
+- **Inspect state (no network):** `sportsup subscribers` lists everyone and what they follow.
+- **Preview without sending:** `sportsup subs-plan` shows each subscriber's due alerts.
+- **Odds budget:** API-Football is capped at ~90 calls/day (`odds_budget`); once spent,
+  upset detection falls back to standings/form until midnight UTC.
+- **Rate limiting:** inbound is throttled per chat (20 msgs/60s) to guard against floods.
+
+### Cutover from single-user `run` to the bot
+
+Run **one** of `run` or `bot` for a given person — never both at once. They use different
+dedup namespaces (`world-cup-2026:…` vs `<chat_id>:…`), so running both double-sends to you.
+
+1. `sportsup migrate-config` — imports `config.yaml` as subscriber #1 (idempotent).
+2. Stop the `run` service/container.
+3. Start `bot` (e.g. swap the compose `command:` from `["run"]` to `["bot"]`).
+4. Verify with `sportsup subscribers` and `sportsup subs-plan`.
+
+To roll back, stop `bot` and start `run` again — `config.yaml` is untouched by migration.

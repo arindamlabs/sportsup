@@ -20,10 +20,13 @@ def test_help_lists_every_command():
         assert required in body
 
 
-def test_active_commands_are_the_wired_ones():
-    assert {c.name for c in texts.active_commands()} == {"start", "help", "subscribe", "stop"}
-    # Inactive ones are flagged "coming soon" in /help, not in the menu.
-    assert "coming soon" in texts.help_text()
+def test_all_commands_active_and_in_help():
+    # Phase 10: every catalog command is wired and appears in the menu + /help.
+    assert all(c.active for c in texts.COMMANDS)
+    body = texts.help_text()
+    for c in texts.COMMANDS:
+        assert f"/{c.name}" in body
+    assert "coming soon" not in body
 
 
 # --- service logic ---------------------------------------------------------
@@ -139,6 +142,8 @@ def test_stop_cancel_keeps_data(tmp_path):
 
 def test_build_application_registers_handlers(tmp_path):
     app = build_application("123456789:AA-fake-token-for-tests", str(tmp_path / "s.sqlite"))
-    # 4 commands + 2 callback handlers + greeting + 2 catch-alls = 9, all in group 0.
-    assert len(app.handlers[0]) == 9
-    assert "sub_store" in app.bot_data
+    # Main group: 10 commands + 5 callback handlers + greeting + 2 catch-alls = 18.
+    assert len(app.handlers[0]) == 18
+    # The rate guard runs first in its own group.
+    assert len(app.handlers[-1]) == 1
+    assert "sub_store" in app.bot_data and "ratelimiter" in app.bot_data

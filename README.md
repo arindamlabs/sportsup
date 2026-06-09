@@ -1,19 +1,47 @@
 # SportsUp
 
-A configurable, single-user tool that tracks sporting events (e.g. **FIFA World Cup 2026**,
-**EPL 2026-27**) and sends **WhatsApp alerts** for the teams you care about:
+A configurable tool that tracks sporting events (e.g. **FIFA World Cup 2026**,
+**EPL 2026-27**) and sends alerts (**Telegram** by default, WhatsApp optional) for the
+teams you care about:
 
 - **Upcoming-fixture reminders** (e.g. day-before + kickoff-soon) in your local timezone
 - **Shock-result detection** — flags upsets via an odds/standings/form heuristic
 - **Final scores** (configurable, default off)
 
-Events, teams, alert types, reminder lead-times, timezone, quiet hours, and upset sensitivity all live
-in editable config — adding a competition or team is a config change, not a code change.
+It runs two ways: **single-user**, driven by `config.yaml` (the original mode), or as a
+**multi-user self-service Telegram bot** where anyone can `/subscribe`, pick tournaments
+and teams, tune their alerts, and manage everything in chat — all on free tiers ($0).
 
-> **Status:** Feature-complete (Phases 0–6). Data providers, alert engine, WhatsApp delivery,
-> always-on scheduling runtime with quiet hours, and hardening + docs. See [`PLAN.md`](PLAN.md),
+> **Status:** Feature-complete (Phases 0–10). Single-user runtime + the multi-user bot:
+> guided onboarding, per-user timezone/quiet-hours/alert-toggles, granular + full
+> unsubscribe, pause/resume, rate-limiting, and an odds-call budget. See [`PLAN.md`](PLAN.md),
 > [`RUNBOOK.md`](RUNBOOK.md) (operations), and [`DEPLOY.md`](DEPLOY.md) (always-on hosting).
 > `dry_run` is on by default, so nothing is sent until you opt in.
+
+## Multi-user Telegram bot
+
+```bash
+python -m sportsup migrate-config   # one-time: import config.yaml as subscriber #1
+python -m sportsup bot              # run the bot: inbound commands + delivery loop
+```
+
+Users message the bot and manage themselves entirely in chat:
+
+| Command | What it does |
+|---|---|
+| `/start`, `hi` | Subscribe + launch guided setup |
+| `/subscribe` | Pick tournaments → teams → alert types/timing (inline keyboards) |
+| `/mysubs` | Show everything you follow + your settings |
+| `/edit` | Change alert types and reminder timing |
+| `/settings` | Set your timezone and quiet hours |
+| `/unsubscribe` | Remove a single team or a whole tournament |
+| `/pause`, `/resume` | Mute/unmute alerts without losing your setup |
+| `/stop` | Full unsubscribe — deletes all your data (with confirmation) |
+| `/help` | List every command |
+
+Data is fetched **once per competition** and fanned out to every subscriber, so adding
+users adds no API calls. Each user gets their own timezone, quiet hours, alert toggles,
+lead-times, and a per-user dedup key. Cutover from single-user is in [`RUNBOOK.md`](RUNBOOK.md).
 
 ## Quick start (WSL2)
 
