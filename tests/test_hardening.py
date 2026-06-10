@@ -1,4 +1,4 @@
-"""Phase 6 tests: schedule-change resilience, template delivery, status query."""
+"""Phase 6 tests: schedule-change resilience, message rendering, status query."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -46,19 +46,10 @@ def _alert():
                           "reason": "big upset"})
 
 
-def test_message_for_alert_text_by_default():
-    msg = message_for_alert(_alert(), _cfg(), "+1555")
-    assert msg.text and msg.template_name is None
-
-
-def test_message_for_alert_uses_template_when_configured():
-    cfg = _cfg(alert_template_name="sportsup_alert", alert_template_lang="en_US")
-    msg = message_for_alert(_alert(), cfg, "+1555")
-    assert msg.template_name == "sportsup_alert"
-    param = msg.template_components[0]["parameters"][0]["text"]
-    assert "\n" not in param          # body params must be single-line
-    assert "*" not in param and "_" not in param  # markdown stripped for template mode
-    assert "WC" in param and "big upset" in param
+def test_message_for_alert_renders_text():
+    msg = message_for_alert(_alert(), _cfg(), "987654321")
+    assert msg.text and msg.recipient == "987654321"
+    assert msg.dedup_key == "wc:k:shock"
 
 
 def test_recent_sent_returns_marked_within_limit(tmp_path):

@@ -1,7 +1,12 @@
 # SportsUp — Plan & Progress Tracker
 
-Configurable personal tool that tracks sporting events and sends WhatsApp alerts for
+Configurable personal tool that tracks sporting events and sends Telegram alerts for
 watched teams. Single user, config-first, no-spam, ToS-aware.
+
+> **Update (2026-06):** the WhatsApp / Meta Cloud delivery channel built in Phase 4 was
+> **removed** after the cutover to Telegram (the Meta account it depended on was retired).
+> The phase history below is kept as a record; Telegram is now the only delivery channel.
+> The swappable sender interface (renamed `WhatsAppSender` → `Sender`) remains.
 
 ## Locked Phase 0 decisions (approved 2026-06-07)
 - **WhatsApp:** Meta WhatsApp Cloud API on a **free test number** (official, free, zero ban risk).

@@ -19,12 +19,7 @@ class Secrets(BaseSettings):
     football_data_api_key: str | None = Field(None, alias="FOOTBALL_DATA_API_KEY")
     api_football_key: str | None = Field(None, alias="API_FOOTBALL_KEY")
 
-    # WhatsApp Cloud API (Phase 4)
-    whatsapp_access_token: str | None = Field(None, alias="WHATSAPP_ACCESS_TOKEN")
-    whatsapp_phone_number_id: str | None = Field(None, alias="WHATSAPP_PHONE_NUMBER_ID")
-    whatsapp_recipient: str | None = Field(None, alias="WHATSAPP_RECIPIENT")
-
-    # Telegram Bot API (free alternative delivery channel)
+    # Telegram Bot API (the delivery channel)
     telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")
 
@@ -40,8 +35,5 @@ class Secrets(BaseSettings):
         return {
             "football-data.org": bool(self.football_data_api_key),
             "api-football": bool(self.api_football_key),
-            "whatsapp-cloud": bool(
-                self.whatsapp_access_token and self.whatsapp_phone_number_id
-            ),
             "telegram": bool(self.telegram_bot_token and self.telegram_chat_id),
         }

@@ -1,17 +1,14 @@
-"""Phase 4 tests: formatting, console sender, Meta Cloud sender, factory selection."""
+"""Delivery tests: alert formatting, the console sender, and factory selection."""
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-import httpx
-
 from sportsup.alerts.models import Alert, AlertType
 from sportsup.config import AppConfig
 from sportsup.delivery import ConsoleSender, OutboundMessage, build_sender, format_alert
-from sportsup.delivery.meta_cloud import MetaCloudSender
+from sportsup.delivery.telegram import TelegramSender
 from sportsup.providers import Fixture, MatchStatus, TeamRef
-from sportsup.providers.http import HttpClient
 
 TZ = ZoneInfo("America/Los_Angeles")
 UTC = timezone.utc
@@ -49,76 +46,37 @@ def test_format_final_and_shock():
 
 
 def test_console_sender_is_ok():
-    res = ConsoleSender().send(OutboundMessage(recipient="+1555", text="hi"))
+    res = ConsoleSender().send(OutboundMessage(recipient="987654321", text="hi"))
     assert res.ok and res.provider == "console"
-
-
-# --- Meta Cloud sender (mocked transport) ---------------------------------
-
-def _meta_sender(handler) -> MetaCloudSender:
-    client = HttpClient("https://graph.test/v21.0",
-                        transport=httpx.MockTransport(handler), sleep=lambda *a: None)
-    return MetaCloudSender("token", "123456", client=client)
-
-
-def test_meta_cloud_send_text_success():
-    def handler(req: httpx.Request) -> httpx.Response:
-        assert req.method == "POST" and req.url.path.endswith("/123456/messages")
-        return httpx.Response(200, json={"messages": [{"id": "wamid.ABC"}]})
-    res = _meta_sender(handler).send(OutboundMessage(recipient="+1555", text="hello"))
-    assert res.ok and res.provider_message_id == "wamid.ABC"
-
-
-def test_meta_cloud_send_surfaces_error_code():
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(400, json={"error": {
-            "message": "Re-engagement message", "code": 131047,
-        }})
-    res = _meta_sender(handler).send(OutboundMessage(recipient="+1555", text="hello"))
-    assert not res.ok and res.error_code == "131047"
-    assert "Re-engagement" in res.error
-
-
-def test_meta_cloud_template_payload_shape():
-    captured = {}
-    def handler(req: httpx.Request) -> httpx.Response:
-        import json
-        captured.update(json.loads(req.content))
-        return httpx.Response(200, json={"messages": [{"id": "wamid.T"}]})
-    _meta_sender(handler).send(OutboundMessage(
-        recipient="+1555", template_name="hello_world", template_lang="en_US"))
-    assert captured["type"] == "template"
-    assert captured["template"]["name"] == "hello_world"
 
 
 # --- factory ---------------------------------------------------------------
 
 def _secrets(**kw):
-    base = dict(dry_run_override=None, whatsapp_access_token=None,
-                whatsapp_phone_number_id=None, whatsapp_recipient="+1555")
+    base = dict(dry_run_override=None, telegram_bot_token=None, telegram_chat_id=None)
     base.update(kw)
     return SimpleNamespace(**base)
 
 
 def test_factory_dry_run_uses_console():
-    cfg = AppConfig.model_validate({"delivery": {"provider": "meta_cloud", "dry_run": True}})
-    sender = build_sender(cfg, _secrets(whatsapp_access_token="t", whatsapp_phone_number_id="1"))
+    cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": True}})
+    sender = build_sender(cfg, _secrets(telegram_bot_token="t", telegram_chat_id="1"))
     assert isinstance(sender, ConsoleSender)
 
 
-def test_factory_live_meta_when_configured():
-    cfg = AppConfig.model_validate({"delivery": {"provider": "meta_cloud", "dry_run": False}})
-    sender = build_sender(cfg, _secrets(whatsapp_access_token="t", whatsapp_phone_number_id="1"))
-    assert isinstance(sender, MetaCloudSender)
+def test_factory_live_telegram_when_configured():
+    cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": False}})
+    sender = build_sender(cfg, _secrets(telegram_bot_token="t", telegram_chat_id="1"))
+    assert isinstance(sender, TelegramSender)
 
 
-def test_factory_live_meta_missing_creds_returns_none():
-    cfg = AppConfig.model_validate({"delivery": {"provider": "meta_cloud", "dry_run": False}})
+def test_factory_live_telegram_missing_creds_returns_none():
+    cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": False}})
     assert build_sender(cfg, _secrets()) is None
 
 
 def test_factory_env_override_forces_dry_run():
-    cfg = AppConfig.model_validate({"delivery": {"provider": "meta_cloud", "dry_run": False}})
+    cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": False}})
     sender = build_sender(cfg, _secrets(dry_run_override=True,
-                                        whatsapp_access_token="t", whatsapp_phone_number_id="1"))
+                                        telegram_bot_token="t", telegram_chat_id="1"))
     assert isinstance(sender, ConsoleSender)

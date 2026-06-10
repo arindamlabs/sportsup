@@ -20,7 +20,7 @@ from .alerts import AlertEngine
 from .alerts.models import Alert
 from .config import AppConfig
 from .delivery import message_for_alert
-from .delivery.base import WhatsAppSender
+from .delivery.base import Sender
 from .pipeline import gather_result_alerts, plan_all_reminders
 from .providers.router import ProviderRouter
 from .state import StateStore
@@ -67,7 +67,7 @@ class SchedulerRuntime:
         self,
         config: AppConfig,
         router: ProviderRouter,
-        sender: WhatsAppSender,
+        sender: Sender,
         store: StateStore,
         recipient: str,
     ) -> None:

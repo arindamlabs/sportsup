@@ -8,15 +8,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class OutboundMessage:
-    """A message to deliver. Either free-form `text` (works inside WhatsApp's 24-hour
-    window) or a pre-approved `template` (works any time). Senders that don't support
-    templates ignore that field."""
+    """A message to deliver: free-form `text` to a `recipient` (a Telegram chat id)."""
 
-    recipient: str                       # E.164, e.g. "+14155550100"
+    recipient: str                       # Telegram chat id, e.g. "987654321"
     text: str | None = None
-    template_name: str | None = None
-    template_lang: str = "en_US"
-    template_components: list | None = None
     dedup_key: str | None = None         # carried through for logging/state correlation
 
 
@@ -30,7 +25,7 @@ class SendResult:
     raw: dict = field(default_factory=dict)
 
 
-class WhatsAppSender(ABC):
+class Sender(ABC):
     name: str = "abstract"
 
     @abstractmethod

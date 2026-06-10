@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from .base import WhatsAppSender
+from .base import Sender
 from .console import ConsoleSender
 
 logger = logging.getLogger("sportsup.delivery.factory")
@@ -21,7 +21,7 @@ def resolve_dry_run(config, secrets) -> bool:
     return config.delivery.dry_run
 
 
-def build_sender(config, secrets, *, force_live: bool = False) -> WhatsAppSender | None:
+def build_sender(config, secrets, *, force_live: bool = False) -> Sender | None:
     """Return a sender, or None if a live provider is selected but unconfigured.
 
     `force_live=True` skips the dry-run console short-circuit and builds the configured
@@ -44,23 +44,6 @@ def build_sender(config, secrets, *, force_live: bool = False) -> WhatsAppSender
         from .telegram import TelegramSender
 
         return TelegramSender(secrets.telegram_bot_token, secrets.telegram_chat_id)
-
-    if provider == "meta_cloud":
-        if not (secrets.whatsapp_access_token and secrets.whatsapp_phone_number_id):
-            logger.error(
-                "delivery.provider=meta_cloud but WHATSAPP_ACCESS_TOKEN / "
-                "WHATSAPP_PHONE_NUMBER_ID are not set in .env"
-            )
-            return None
-        from .meta_cloud import MetaCloudSender
-
-        return MetaCloudSender(
-            secrets.whatsapp_access_token, secrets.whatsapp_phone_number_id
-        )
-
-    if provider == "twilio":
-        logger.error("Twilio sender is documented as a fallback but not implemented yet")
-        return None
 
     logger.error("unknown delivery provider %r", provider)
     return None

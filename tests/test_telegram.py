@@ -1,18 +1,13 @@
-"""Tests for the Telegram sender + channel switching."""
+"""Tests for the Telegram sender + channel selection."""
 
-from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
 
-from sportsup.alerts.models import Alert, AlertType
 from sportsup.config import AppConfig
-from sportsup.delivery import OutboundMessage, build_sender, message_for_alert
+from sportsup.delivery import OutboundMessage, build_sender
 from sportsup.delivery.telegram import TelegramSender, _to_html
-from sportsup.providers import Fixture, MatchStatus, TeamRef
 from sportsup.providers.http import HttpClient
-
-UTC = timezone.utc
 
 
 def _sender(handler) -> TelegramSender:
@@ -64,11 +59,10 @@ def test_to_html_escapes_ampersand():
     assert _to_html("Brighton & Hove") == "Brighton &amp; Hove"
 
 
-# --- channel switching -----------------------------------------------------
+# --- channel selection -----------------------------------------------------
 
 def _secrets(**kw):
-    base = dict(dry_run_override=None, whatsapp_access_token=None, whatsapp_phone_number_id=None,
-                whatsapp_recipient=None, telegram_bot_token=None, telegram_chat_id=None)
+    base = dict(dry_run_override=None, telegram_bot_token=None, telegram_chat_id=None)
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -86,20 +80,8 @@ def test_factory_telegram_missing_creds_returns_none():
 
 def test_factory_force_live_bypasses_dry_run():
     # `test-send` builds the real provider even when dry_run is on.
+    from sportsup.delivery.console import ConsoleSender
     cfg = AppConfig.model_validate({"delivery": {"provider": "telegram", "dry_run": True}})
     s = _secrets(telegram_bot_token="t", telegram_chat_id="1")
-    assert isinstance(build_sender(cfg, s), __import__("sportsup.delivery.console", fromlist=["ConsoleSender"]).ConsoleSender)
+    assert isinstance(build_sender(cfg, s), ConsoleSender)
     assert isinstance(build_sender(cfg, s, force_live=True), TelegramSender)
-
-
-def test_telegram_provider_ignores_whatsapp_template():
-    # Even with a template configured, telegram alerts must be plain text (no template).
-    cfg = AppConfig.model_validate({"delivery": {
-        "provider": "telegram", "alert_template_name": "sportsup_alert"}})
-    fx = Fixture(provider="t", provider_fixture_id="1", competition_code="WC", season=2026,
-                 utc_kickoff=datetime(2026, 6, 13, 22, tzinfo=UTC), status=MatchStatus.FINISHED,
-                 home=TeamRef(name="Brazil"), away=TeamRef(name="Serbia"))
-    alert = Alert(AlertType.FINAL_SCORE, "wc", "k", fx, summary="",
-                  context={"competition": "WC", "home_score": 1, "away_score": 0})
-    msg = message_for_alert(alert, cfg, "chatid")
-    assert msg.text is not None and msg.template_name is None

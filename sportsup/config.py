@@ -5,7 +5,7 @@ events (on/off), per-event team watchlists, per-event alert toggles, reminder
 lead-times, timezone, quiet hours, and shock-detection sensitivity. Adding a
 competition or team is a config edit — no code change.
 
-Secrets (API keys, WhatsApp tokens) deliberately do NOT live here; they come from
+Secrets (API keys, bot token) deliberately do NOT live here; they come from
 the environment via :mod:`sportsup.settings`.
 """
 
@@ -149,15 +149,9 @@ class ShockDetectionConfig(BaseModel):
 class DeliveryConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
-    provider: str = Field("meta_cloud", pattern="^(meta_cloud|twilio|telegram|console)$")
+    provider: str = Field("telegram", pattern="^(telegram|console)$")
     # Safety: when true, format + log messages instead of sending. Env can override.
     dry_run: bool = True
-    # Optional approved utility template so alerts deliver OUTSIDE the 24h window.
-    # When set, alerts are sent as this template with the message as a single body
-    # parameter {{1}} (recommended template body: "SportsUp ⚽\n{{1}}"). When null,
-    # alerts are sent as free-form text (delivers only inside the 24h window).
-    alert_template_name: str | None = None
-    alert_template_lang: str = "en_US"
 
 
 class SchedulingConfig(BaseModel):

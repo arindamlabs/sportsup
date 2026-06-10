@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from sportsup.config import AppConfig
-from sportsup.delivery.base import SendResult, WhatsAppSender
+from sportsup.delivery.base import SendResult, Sender
 from sportsup.delivery.console import ConsoleSender
 from sportsup.mux_delivery import run_delivery_cycle
 from sportsup.providers import Fixture, MatchStatus, TeamRef
@@ -14,7 +14,6 @@ from sportsup.subscribers import Subscriber, SubscriberStore
 UTC = timezone.utc
 NOW = datetime(2026, 6, 13, 12, 0, tzinfo=UTC)
 
-# provider=console so message_for_alert renders plain text (no WhatsApp template).
 BASE = AppConfig.model_validate({
     "timezone": "UTC", "reminders": {"lead_times": ["1h"]},
     "delivery": {"provider": "console"},
@@ -46,7 +45,7 @@ class FakeRouter:
         return None
 
 
-class FakeSender(WhatsAppSender):
+class FakeSender(Sender):
     name = "fake"
 
     def __init__(self):

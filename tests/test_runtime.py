@@ -7,7 +7,7 @@ import httpx
 
 from sportsup.alerts.models import Alert, AlertType
 from sportsup.config import AppConfig
-from sportsup.delivery.base import SendResult, WhatsAppSender
+from sportsup.delivery.base import SendResult, Sender
 from sportsup.providers import Fixture, MatchStatus, TeamRef
 from sportsup.providers.football_data import FootballDataProvider
 from sportsup.providers.http import HttpClient
@@ -83,7 +83,7 @@ def test_classify_result_respects_quiet_hours():
 
 # --- run_once integration + dedup -----------------------------------------
 
-class _FakeSender(WhatsAppSender):
+class _FakeSender(Sender):
     name = "fake"
 
     def __init__(self):
