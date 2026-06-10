@@ -28,11 +28,11 @@ sudo usermod -aG docker $USER && newgrp docker
 ### 3. Get the code + configure
 ```bash
 git clone https://github.com/arindamlabs/sportsup.git && cd sportsup
-cp .env.example .env        # paste your API keys + WhatsApp creds
+cp .env.example .env        # paste your API keys + Telegram bot creds
 cp config.example.yaml config.yaml   # edit teams/timezone/etc (or scp your local one)
 ```
 Set secrets in `.env` (`FOOTBALL_DATA_API_KEY`, optional `API_FOOTBALL_KEY`,
-`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_RECIPIENT`).
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
 Keep `SPORTSUP_DRY_RUN=true` for the first boot.
 
 ### 4. Dry-run, then go live
@@ -40,7 +40,7 @@ Keep `SPORTSUP_DRY_RUN=true` for the first boot.
 docker compose run --rm sportsup run --once   # one cycle, console output, nothing sent
 # verify creds + a real test:
 docker compose run --rm sportsup providers
-docker compose run --rm sportsup whatsapp-test --live
+docker compose run --rm sportsup test-send     # sends one real sample alert to confirm delivery
 # when happy, set delivery.dry_run: false (config.yaml) or SPORTSUP_DRY_RUN=false (.env), then:
 docker compose up -d                             # always-on, restarts on reboot
 docker compose logs -f                           # watch it
@@ -67,7 +67,5 @@ Anything that runs Docker and stays on works. The image is multi-arch (x86 + ARM
 - **Outbound only:** no inbound firewall rules needed.
 - **Time:** the container works in UTC internally and renders alerts in your `config.yaml` timezone, so
   the host clock just needs to be roughly correct (NTP, on by default).
-- **Costs:** football-data.org free tier + WhatsApp test number = $0. Oracle/Google free tiers = $0.
+- **Costs:** football-data.org free tier + Telegram Bot API = $0. Oracle/Google free tiers = $0.
   Watch only that you stay on Always-Free shapes.
-- **Before June 11 (World Cup):** set up the approved utility template (see [`RUNBOOK.md`](RUNBOOK.md))
-  so alerts deliver outside the 24h window once you're live.

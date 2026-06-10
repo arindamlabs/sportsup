@@ -20,7 +20,7 @@ class Alert:
     """A single alert ready to be (de-duplicated, formatted, and) sent.
 
     `summary` is a plain one-liner for logging / dry-run; `context` carries the
-    structured fields Phase 4 uses to render WhatsApp templates. `dedup_key` is the
+    structured fields the formatter uses to render the message. `dedup_key` is the
     exactly-once key checked against the state store.
     """
 

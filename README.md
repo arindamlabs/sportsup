@@ -1,8 +1,7 @@
 # SportsUp
 
 A configurable tool that tracks sporting events (e.g. **FIFA World Cup 2026**,
-**EPL 2026-27**) and sends alerts (**Telegram** by default, WhatsApp optional) for the
-teams you care about:
+**EPL 2026-27**) and sends **Telegram** alerts for the teams you care about:
 
 - **Upcoming-fixture reminders** (e.g. day-before + kickoff-soon) in your local timezone
 - **Shock-result detection** — flags upsets via an odds/standings/form heuristic
@@ -82,7 +81,7 @@ docker compose run --rm sportsup plan
 
 - **`config.yaml`** — everything you tune (events, teams, toggles, lead-times, timezone, quiet hours,
   shock sensitivity). Git-ignored because it's personal; `config.example.yaml` is the committed template.
-- **`.env`** — secrets only (API keys, WhatsApp token). Git-ignored; `.env.example` is the template.
+- **`.env`** — secrets only (API keys, Telegram bot token). Git-ignored; `.env.example` is the template.
 
 See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 
@@ -95,7 +94,6 @@ See [`config.example.yaml`](config.example.yaml) for the annotated schema.
 | `python -m sportsup providers` | Probe data-provider connectivity/auth (needs API keys in `.env`) |
 | `python -m sportsup fixtures` | Fetch & print upcoming fixtures for watched teams in your timezone |
 | `python -m sportsup alerts` | Dry-run preview of scheduled reminders + result/upset alerts |
-| `python -m sportsup whatsapp-test [--live] [--template]` | Preview formatting; `--live` sends a real test (`hello_world`, or your `--template`) |
 | `python -m sportsup notify` | Deliver due alerts once via the configured sender (console in dry-run) |
 | `python -m sportsup status` | Show sent-alert history + last sync (reads the state store, no network) |
 | `python -m sportsup test-send [--type upset]` | Send one real sample alert via the configured channel (ignores dry_run) |
@@ -112,9 +110,8 @@ enable odds-based shock detection later. Without keys they exit with a clear mes
 
 ## Design notes
 
-- **Delivery:** swappable sender interface — **Telegram** (free, default), **WhatsApp** Meta Cloud API,
-  or console (dry-run). Switch with one line: `delivery.provider`. Unofficial WhatsApp automation is
-  intentionally **not** used (ToS / ban risk).
+- **Delivery:** swappable sender interface — **Telegram** (free, default) or console (dry-run).
+  Switch with one line: `delivery.provider`.
 - **Data:** football-data.org (fixtures/results/standings) + API-Football (odds) behind a provider interface.
 - **State:** SQLite store gives exactly-once alerts that survive restarts.
 - **Hosting:** develop locally, deploy the same container to an always-on host (Oracle Always-Free ARM VM).

@@ -1,6 +1,6 @@
 # SportsUp configuration — copy to `config.yaml` and edit freely.
 # Adding/removing events, teams, or alert types is a config change; no code edits needed.
-# Secrets (API keys, WhatsApp tokens) do NOT go here — they live in `.env`.
+# Secrets (API keys, bot token) do NOT go here — they live in `.env`.
 
 # IANA timezone name. All times in alerts are rendered in this zone (DST handled automatically).
 timezone: America/Los_Angeles
@@ -24,16 +24,9 @@ shock_detection:
   signal_priority: ["odds", "standings", "form"]
 
 delivery:
-  provider: telegram         # telegram (free) | meta_cloud (WhatsApp) | twilio | console
+  provider: telegram         # telegram (free) | console
   dry_run: true              # true = print messages instead of sending (env SPORTSUP_DRY_RUN overrides)
-  # --- WhatsApp-only: approved utility template so alerts deliver OUTSIDE the 24h window.
-  #     Ignored for telegram/console. See RUNBOOK.md "Creating the utility template".
-  # alert_template_name: sportsup_alert
-  # alert_template_lang: en_US
-  #
-  # Channel credentials live in .env:
-  #   telegram   -> TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
-  #   meta_cloud -> WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT
+  # Channel credentials live in .env:  telegram -> TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 scheduling:                  # cadences for `sportsup run` (the always-on runtime)
   fixture_sync_hours: 12     # re-pull fixtures this often

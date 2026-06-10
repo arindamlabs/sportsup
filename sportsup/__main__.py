@@ -23,7 +23,7 @@ from .alerts import AlertEngine
 from .alerts.models import Alert, AlertType
 from .catalog import competition_name, league_map
 from .config import AppConfig, load_config
-from .delivery import ConsoleSender, OutboundMessage, build_sender, format_alert, message_for_alert
+from .delivery import build_sender, message_for_alert
 from .fanout import plan_for_all_subscribers
 from .logging_setup import setup_logging
 from .pipeline import gather_result_alerts, plan_all_reminders
@@ -109,10 +109,8 @@ def cmd_plan(args, logger) -> int:
 
 
 def _active_recipient(config: AppConfig, secrets: Secrets) -> str | None:
-    """The recipient id for the configured channel: Telegram chat id, else WhatsApp number."""
-    if config.delivery.provider == "telegram":
-        return secrets.telegram_chat_id
-    return secrets.whatsapp_recipient
+    """The recipient id for the configured channel (the Telegram chat id)."""
+    return secrets.telegram_chat_id
 
 
 def _resolve_recipient(config: AppConfig, secrets: Secrets, sender, logger) -> str | None:
@@ -123,10 +121,7 @@ def _resolve_recipient(config: AppConfig, secrets: Secrets, sender, logger) -> s
         return recipient
     if sender.name == "console":
         return "(dry-run)"
-    if config.delivery.provider == "telegram":
-        logger.error("Set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env (provider=telegram).")
-    else:
-        logger.error("Set WHATSAPP_RECIPIENT in .env (provider=%s).", config.delivery.provider)
+    logger.error("Set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID in .env (provider=telegram).")
     return None
 
 
@@ -274,72 +269,7 @@ def _sample_alerts(now) -> list[Alert]:
     ]
 
 
-def cmd_whatsapp_test(args, logger) -> int:
-    """Preview formatted messages, and with --live send a real test message:
-    the built-in 'hello_world' template, or (with --template) your configured
-    alert_template_name carrying a sample upset alert — to confirm the live path."""
-    config = load_config(args.config)
-    secrets = Secrets()
-    recipient = secrets.whatsapp_recipient
-    if not recipient:
-        logger.error("Set WHATSAPP_RECIPIENT (your number in E.164) in .env.")
-        return 2
-
-    tz = config.tzinfo
-    console = ConsoleSender()
-    logger.info("Message formatting previews (these are what alerts will look like):")
-    for a in _sample_alerts(datetime.now(timezone.utc)):
-        console.send(OutboundMessage(recipient=recipient, text=format_alert(a, tz), dedup_key=a.dedup_key))
-
-    # The sample alert used for a live --template send (the upset is the richest test).
-    sample = _sample_alerts(datetime.now(timezone.utc))[-1]
-
-    if not args.live:
-        logger.info("")
-        if args.template:
-            tmpl = config.delivery.alert_template_name
-            if tmpl:
-                param = message_for_alert(sample, config, recipient).template_components[0]["parameters"][0]["text"]
-                logger.info("With --live, would send via template '%s' with {{1}} = %s", tmpl, param)
-            else:
-                logger.info("Set delivery.alert_template_name in config.yaml to test a custom template.")
-        else:
-            logger.info("Add --live to send a real 'hello_world' template to %s and confirm delivery.", recipient)
-        return 0
-
-    if not (secrets.whatsapp_access_token and secrets.whatsapp_phone_number_id):
-        logger.error("Live send needs WHATSAPP_ACCESS_TOKEN + WHATSAPP_PHONE_NUMBER_ID in .env.")
-        return 2
-
-    from .delivery.meta_cloud import MetaCloudSender
-    sender = MetaCloudSender(secrets.whatsapp_access_token, secrets.whatsapp_phone_number_id)
-
-    if args.template:
-        tmpl = config.delivery.alert_template_name
-        if not tmpl:
-            logger.error("Set delivery.alert_template_name in config.yaml first (and ensure the template is Approved).")
-            return 2
-        message = message_for_alert(sample, config, recipient)  # template mode (config has the name)
-        logger.info("Sending live message via template '%s' to %s ...", tmpl, recipient)
-        expect = f"an alert from template '{tmpl}'"
-    else:
-        message = OutboundMessage(recipient=recipient, template_name="hello_world", template_lang="en_US")
-        logger.info("Sending live 'hello_world' template to %s ...", recipient)
-        expect = "'Hello World'"
-
-    res = sender.send(message)
-    if res.ok:
-        logger.info("LIVE SEND OK (message id %s). Check WhatsApp on %s — you should see %s.",
-                    res.provider_message_id, recipient, expect)
-        return 0
-    logger.error("LIVE SEND FAILED: %s (code %s)%s", res.error, res.error_code,
-                 "  [template not approved yet? check status in WhatsApp Manager]"
-                 if res.error_code in ("132001", "132000", "132012", "132015") else "")
-    return 1
-
-
-_CHANNEL_LABEL = {"telegram": "Telegram", "meta_cloud": "WhatsApp", "twilio": "WhatsApp",
-                  "console": "console output"}
+_CHANNEL_LABEL = {"telegram": "Telegram", "console": "console output"}
 
 
 def cmd_test_send(args, logger) -> int:
@@ -451,10 +381,7 @@ def cmd_migrate_config(args, logger) -> int:
     secrets = Secrets()
     chat_id = _active_recipient(config, secrets)
     if not chat_id:
-        if config.delivery.provider == "telegram":
-            logger.error("Set TELEGRAM_CHAT_ID in .env — it's the chat_id for subscriber #1.")
-        else:
-            logger.error("Set WHATSAPP_RECIPIENT in .env — it's the recipient for subscriber #1.")
+        logger.error("Set TELEGRAM_CHAT_ID in .env — it's the chat_id for subscriber #1.")
         return 2
 
     store = StateStore(args.db)
@@ -611,10 +538,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("fixtures", parents=[common], help="fetch upcoming fixtures for watched teams")
     p_alerts = sub.add_parser("alerts", parents=[common], help="dry-run preview of reminders + result alerts")
     p_alerts.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
-    p_wa = sub.add_parser("whatsapp-test", parents=[common], help="preview message formatting; --live sends a real test message")
-    p_wa.add_argument("--live", action="store_true", help="actually send a real test message via Meta Cloud API")
-    p_wa.add_argument("--template", action="store_true",
-                      help="send via the configured alert_template_name (instead of hello_world)")
     p_notify = sub.add_parser("notify", parents=[common], help="deliver due alerts via the configured sender (console if dry-run)")
     p_notify.add_argument("--results-days", type=int, default=3, help="how far back to scan for finished matches")
     p_status = sub.add_parser("status", parents=[common], help="show sent-alert history + last sync (no network)")
@@ -656,7 +579,6 @@ def main(argv: list[str] | None = None) -> int:
         "providers": cmd_providers,
         "fixtures": cmd_fixtures,
         "alerts": cmd_alerts,
-        "whatsapp-test": cmd_whatsapp_test,
         "notify": cmd_notify,
         "status": cmd_status,
         "test-send": cmd_test_send,

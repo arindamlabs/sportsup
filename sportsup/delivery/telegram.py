@@ -1,9 +1,9 @@
 """Telegram Bot API sender.
 
-Free, official, no payment method / template approval / 24h-window — ideal for personal
-alerts. Sends via the Bot API ``/sendMessage``. ``OutboundMessage.recipient`` selects the
-target chat (so one sender serves every subscriber in the multi-user bot); it falls back
-to the bot's configured default ``chat_id`` when a message carries no recipient.
+Free, official, no payment method and no per-message cost — ideal for personal alerts.
+Sends via the Bot API ``/sendMessage``. ``OutboundMessage.recipient`` selects the target
+chat (so one sender serves every subscriber in the multi-user bot); it falls back to the
+bot's configured default ``chat_id`` when a message carries no recipient.
 
 Messages are sent as HTML (Telegram renders *bold*/_italic_ from format_alert as <b>/<i>).
 """
@@ -16,7 +16,7 @@ import re
 
 from ..providers.base import ProviderUnavailableError
 from ..providers.http import HttpClient
-from .base import OutboundMessage, SendResult, WhatsAppSender
+from .base import OutboundMessage, SendResult, Sender
 
 logger = logging.getLogger("sportsup.delivery.telegram")
 
@@ -29,7 +29,7 @@ def _to_html(text: str) -> str:
     return esc
 
 
-class TelegramSender(WhatsAppSender):
+class TelegramSender(Sender):
     name = "telegram"
 
     def __init__(self, bot_token: str, chat_id: str, *, client: HttpClient | None = None) -> None:

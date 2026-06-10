@@ -1,8 +1,9 @@
-"""Render an :class:`~sportsup.alerts.models.Alert` into clean WhatsApp text.
+"""Render an :class:`~sportsup.alerts.models.Alert` into clean alert text.
 
-WhatsApp supports *bold* and _italic_. Times are shown in the user's configured
-timezone. Kept separate from the engine so message wording can change without touching
-alert logic, and so a different channel could reuse the alert with its own formatter.
+Messages use simple ``*bold*`` / ``_italic_`` markers (the Telegram sender converts
+them to HTML). Times are shown in the user's configured timezone. Kept separate from the
+engine so message wording can change without touching alert logic, and so a different
+channel could reuse the alert with its own formatter.
 """
 
 from __future__ import annotations
@@ -63,26 +64,6 @@ def format_alert(alert: Alert, tz: ZoneInfo) -> str:
 
 
 def message_for_alert(alert: Alert, config, recipient: str) -> OutboundMessage:
-    """Build the OutboundMessage for an alert, honoring the delivery config:
-
-    - if ``delivery.alert_template_name`` is set → send as that approved template with the
-      message as a single-line body parameter (delivers any time, in or out of the 24h
-      window). WhatsApp body params can't contain newlines, so the text is flattened.
-    - otherwise → free-form text (delivers only inside the 24h window).
-    """
+    """Build the OutboundMessage for an alert: free-form text rendered in the user's tz."""
     text = format_alert(alert, config.tzinfo)
-    tmpl = config.delivery.alert_template_name
-    # Templates are a WhatsApp concept; other channels (telegram/console) always use text.
-    if tmpl and config.delivery.provider in ("meta_cloud", "twilio"):
-        # Template body params: single line, and strip WhatsApp markdown markers
-        # (*bold* / _italic_) which don't render inside a variable.
-        one_line = " · ".join(p for p in text.splitlines() if p.strip())
-        one_line = one_line.replace("*", "").replace("_", "")
-        return OutboundMessage(
-            recipient=recipient,
-            template_name=tmpl,
-            template_lang=config.delivery.alert_template_lang,
-            template_components=[{"type": "body", "parameters": [{"type": "text", "text": one_line}]}],
-            dedup_key=alert.dedup_key,
-        )
     return OutboundMessage(recipient=recipient, text=text, dedup_key=alert.dedup_key)

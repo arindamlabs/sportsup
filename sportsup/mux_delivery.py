@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from .alerts.models import Alert, AlertType
 from .config import AppConfig
 from .delivery import message_for_alert
-from .delivery.base import WhatsAppSender
+from .delivery.base import Sender
 from .fanout import plan_for_all_subscribers
 from .odds_budget import OddsBudget
 from .providers.router import ProviderRouter
@@ -45,7 +45,7 @@ class DeliveryStats:
 
 def run_delivery_cycle(
     base_config: AppConfig, router: ProviderRouter, store: StateStore,
-    sub_store: SubscriberStore, sender: WhatsAppSender, *, now: datetime | None = None,
+    sub_store: SubscriberStore, sender: Sender, *, now: datetime | None = None,
     odds_budget: OddsBudget | None = None,
 ) -> DeliveryStats:
     """Plan + deliver one cycle of alerts across all active subscribers."""
@@ -85,7 +85,7 @@ def run_delivery_cycle(
 
 
 def _deliver(
-    alert: Alert, config: AppConfig, chat_id: str, sender: WhatsAppSender,
+    alert: Alert, config: AppConfig, chat_id: str, sender: Sender,
     store: StateStore, stats: DeliveryStats,
 ) -> None:
     res = sender.send(message_for_alert(alert, config, chat_id))
