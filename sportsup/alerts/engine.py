@@ -92,6 +92,16 @@ class AlertEngine:
             fx = r.fixture
             if not fx.status.is_finished:
                 continue
+            # A match can report FINISHED before the provider populates the score
+            # (a brief propagation lag right at full-time). Skip until the score is
+            # available: we don't mark anything sent, so a later cycle delivers the
+            # real score instead of an uncorrectable "None–None".
+            if not r.score.is_complete:
+                logger.info(
+                    "result for %s %s vs %s is finished but has no score yet; deferring",
+                    fx.competition_code, fx.home.name, fx.away.name,
+                )
+                continue
 
             if event.alerts.final_scores:
                 alerts.append(

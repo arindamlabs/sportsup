@@ -146,3 +146,20 @@ def test_unfinished_match_produces_no_result_alert(tmp_path):
     r = _result("Brazil", "Morocco", None, None, status=MatchStatus.IN_PLAY)
     assert engine.evaluate_results(cfg.events[0], [r], odds_lookup=lambda _r: None) == []
     store.close()
+
+
+def test_finished_match_without_score_defers_until_score_arrives(tmp_path):
+    # A match can flip to FINISHED before the provider populates the score. We must
+    # NOT emit a "None–None" alert, and must not mark anything sent, so a later cycle
+    # (once the score lands) still delivers the real result.
+    cfg = _config()
+    store = StateStore(tmp_path / "s.sqlite")
+    engine = AlertEngine(cfg, store)
+    no_score = _result("Mexico", "South Africa", None, None, status=MatchStatus.FINISHED)
+    assert engine.evaluate_results(cfg.events[0], [no_score], odds_lookup=lambda _r: None) == []
+
+    # Same match, now with the real score, produces the final-score alert as normal.
+    scored = _result("Mexico", "South Africa", 2, 0)
+    alerts = engine.evaluate_results(cfg.events[0], [scored], odds_lookup=lambda _r: None)
+    assert AlertType.FINAL_SCORE in {a.type for a in alerts}
+    store.close()
